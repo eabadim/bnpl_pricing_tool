@@ -48,7 +48,7 @@ avg_principal = st.sidebar.number_input(
     "Average Loan Principal ($)",
     min_value=20.0,
     max_value=10000.0,
-    value=1000.0,
+    value=100.0,
     step=10.0,
     help="Average loan amount"
 )
@@ -57,14 +57,14 @@ avg_installments = st.sidebar.slider(
     "Average Installment Count",
     min_value=1,
     max_value=36,
-    value=6,
+    value=7,
     help="Number of installments"
 )
 
 # Installment frequency
 installment_frequency = st.sidebar.radio(
     "Installment Frequency",
-    options=["Monthly", "Biweekly"],
+    options=["Biweekly", "Monthly"],
     help="Choose payment frequency: Monthly (30 days) or Biweekly (14 days)"
 )
 installment_frequency_days = 30 if installment_frequency == "Monthly" else 14
@@ -75,7 +75,7 @@ if plan_type == "Interest-bearing":
         "Interest Rate (APR %)",
         min_value=0.0,
         max_value=500.0,
-        value=30.0,
+        value=250.0,
         step=5.0,
         help="Annual Percentage Rate for interest-bearing loans"
     ) / 100.0
@@ -87,8 +87,8 @@ fixed_fee_pct = st.sidebar.slider(
     "Fixed Loan Fee (%)",
     min_value=0.0,
     max_value=100.0,
-    value=2.0,
-    step=0.25,
+    value=0.0,
+    step=1.0,
     help="Fixed fee as % of principal (protects against early repayment)"
 ) / 100.0
 
@@ -100,7 +100,7 @@ late_fee_amount = st.sidebar.number_input(
     "Late Fee Amount ($)",
     min_value=0.0,
     max_value=20.0,
-    value=5.0,
+    value=3.0,
     step=0.50,
     help="Fee charged per late installment payment"
 )
@@ -122,7 +122,7 @@ merchant_commission = st.sidebar.slider(
     "Merchant Commission (%)",
     min_value=0.0,
     max_value=10.0,
-    value=2.5,
+    value=1.0,
     step=0.1,
     help="Fee charged to merchants"
 ) / 100.0
@@ -131,7 +131,7 @@ settlement_delay = st.sidebar.slider(
     "Settlement Delay (days)",
     min_value=0,
     max_value=60,
-    value=7,
+    value=1,
     help="Days until merchant is paid"
 )
 
@@ -140,7 +140,7 @@ default_rate = st.sidebar.slider(
     "Default Rate (%)",
     min_value=0.0,
     max_value=30.0,
-    value=5.0,
+    value=15.0,
     step=0.5,
     help="Expected portfolio default rate"
 ) / 100.0
@@ -149,7 +149,7 @@ recovery_rate = st.sidebar.slider(
     "Credit Loss Recovery Rate (%)",
     min_value=0.0,
     max_value=100.0,
-    value=20.0,
+    value=10.0,
     step=5.0,
     help="% recovered from defaulted loans"
 ) / 100.0
@@ -159,7 +159,7 @@ target_yield = st.sidebar.slider(
     "Target Annualized Yield (%)",
     min_value=10.0,
     max_value=100.0,
-    value=40.0,
+    value=60.0,
     step=1.0,
     help="Desired portfolio-level return"
 ) / 100.0
@@ -169,7 +169,7 @@ funding_cost = st.sidebar.slider(
     "Funding Cost (APR %)",
     min_value=0.0,
     max_value=20.0,
-    value=0.0,
+    value=8.0,
     step=0.5,
     help="Cost of capital (optional)"
 ) / 100.0
