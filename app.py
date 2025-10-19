@@ -86,7 +86,7 @@ else:
 fixed_fee_pct = st.sidebar.slider(
     "Fixed Loan Fee (%)",
     min_value=0.0,
-    max_value=10.0,
+    max_value=100.0,
     value=2.0,
     step=0.25,
     help="Fixed fee as % of principal (protects against early repayment)"
