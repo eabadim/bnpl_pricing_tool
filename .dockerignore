@@ -1,0 +1,41 @@
+# Docker ignore file
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
+*.md
+CHANGELOG.md
+DEPLOYMENT.md
+README.md
+FLOAT_SCENARIO_EXPLAINED.md
+UI_COMPRESSION_NOTES.md
+
+# Tests (not needed in production)
+test_*.py
+
+# Local configs
+.env
+.env.local
