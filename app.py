@@ -1,5 +1,5 @@
 """
-Tafi BNPL Pricing Strategy Simulator
+BNPL Pricing Strategy Simulator
 Interactive tool for modeling and visualizing BNPL product profitability
 """
 
@@ -21,13 +21,13 @@ from pricing_engine import (
 
 # Page configuration
 st.set_page_config(
-    page_title="Tafi BNPL Pricing Simulator",
+    page_title="BNPL Pricing Simulator",
     page_icon="💰",
     layout="wide"
 )
 
 # Header
-st.title("Tafi BNPL Pricing Strategy Simulator")
+st.title("BNPL Pricing Strategy Simulator")
 st.markdown("Model and visualize the profitability and yield of BNPL products under different pricing scenarios")
 
 # Sidebar inputs
@@ -576,4 +576,4 @@ with st.expander("💡 Key Insights", expanded=False):
         st.markdown(f"- {insight}")
 
 # Footer
-st.caption("Tafi BNPL Pricing Strategy Simulator v1.4 | Built with Streamlit")
+st.caption("BNPL Pricing Strategy Simulator v1.4 | Built with Streamlit")
