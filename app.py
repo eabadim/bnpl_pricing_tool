@@ -342,7 +342,7 @@ base_params = {
 }
 
 # Chart 1: Yield vs Default Rate
-default_range = np.linspace(0, 1.0, 30)
+default_range = np.linspace(0, 0.5, 30)
 base_params_for_default = base_params.copy()
 base_params_for_default['apr'] = interest_apr
 
