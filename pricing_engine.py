@@ -97,10 +97,10 @@ def calculate_effective_yield(
     # Total revenue
     total_revenue = interest_income + fixed_fee_income + merchant_commission + late_fee_income
 
-    # Funding cost from settlement delay
-    # This is the cost of capital during the settlement period
-    settlement_delay_years = settlement_delay_days / 365
-    funding_cost = principal * funding_cost_apr * settlement_delay_years
+    # Funding cost from capital deployment
+    # This is the cost of capital during the period when capital is deployed to the merchant
+    # (from when we pay merchant until we receive final customer payment)
+    funding_cost = principal * funding_cost_apr * capital_deployment_years
 
     # Default loss (principal lost after recovery)
     expected_loss = principal * default_rate * (1 - recovery_rate)
