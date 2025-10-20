@@ -18,7 +18,8 @@ def calculate_effective_yield(
     funding_cost_apr: float = 0.0,
     installment_frequency_days: int = 30,
     late_fee_amount: float = 0.0,
-    late_installment_pct: float = 0.0
+    late_installment_pct: float = 0.0,
+    first_installment_upfront: bool = False
 ) -> Dict[str, float]:
     """
     Calculate the effective annualized yield for a BNPL loan.
@@ -42,12 +43,34 @@ def calculate_effective_yield(
         installment_frequency_days: Days between installments (30 for monthly, 14 for biweekly)
         late_fee_amount: Late fee amount in $ per late installment
         late_installment_pct: % of installments paid late (as decimal, e.g., 0.20 for 20%)
+        first_installment_upfront: If True, customer pays first installment at purchase (Day 0)
 
     Returns:
         Dictionary with yield breakdown
     """
-    # Loan duration in days (time from purchase to last customer payment)
-    loan_duration_days = installments * installment_frequency_days
+    # Validation: Can't have first installment upfront with only 1 installment
+    if first_installment_upfront and installments <= 1:
+        # Treat as full upfront payment - no loan needed
+        first_installment_upfront = False
+
+    # Calculate installment amount
+    installment_amount = principal / installments
+
+    # Adjust for first installment upfront
+    if first_installment_upfront:
+        # Customer pays first installment immediately at purchase
+        # This reduces the capital we need to deploy to the merchant
+        capital_to_deploy = principal - installment_amount
+        # Loan duration is shorter (one fewer period)
+        loan_duration_days = (installments - 1) * installment_frequency_days
+        # Number of installments that can incur late fees (excluding upfront one)
+        late_fee_installments = installments - 1
+    else:
+        # Standard case: we deploy full principal
+        capital_to_deploy = principal
+        loan_duration_days = installments * installment_frequency_days
+        late_fee_installments = installments
+
     loan_duration_years = loan_duration_days / 365
 
     # CRITICAL: Settlement delay REDUCES deployment period
@@ -91,8 +114,8 @@ def calculate_effective_yield(
 
     # Late fee income
     # Only non-defaulted loans pay late fees
-    # Late fee revenue = installments × (1 - default_rate) × % late × late fee amount
-    late_fee_income = installments * (1 - default_rate) * late_installment_pct * late_fee_amount
+    # Late fee revenue = late_fee_installments × (1 - default_rate) × % late × late fee amount
+    late_fee_income = late_fee_installments * (1 - default_rate) * late_installment_pct * late_fee_amount
 
     # Total revenue
     total_revenue = interest_income + fixed_fee_income + merchant_commission + late_fee_income
@@ -100,10 +123,12 @@ def calculate_effective_yield(
     # Funding cost from capital deployment
     # This is the cost of capital during the period when capital is deployed to the merchant
     # (from when we pay merchant until we receive final customer payment)
-    funding_cost = principal * funding_cost_apr * capital_deployment_years
+    # If first installment is upfront, we deploy less capital (capital_to_deploy)
+    funding_cost = capital_to_deploy * funding_cost_apr * capital_deployment_years
 
-    # Default loss (principal lost after recovery)
-    expected_loss = principal * default_rate * (1 - recovery_rate)
+    # Default loss (capital at risk after recovery)
+    # If first installment is upfront, less capital is at risk
+    expected_loss = capital_to_deploy * default_rate * (1 - recovery_rate)
 
     # Net profit
     net_profit = total_revenue - funding_cost - expected_loss
@@ -111,12 +136,17 @@ def calculate_effective_yield(
     # Effective yield (annualized)
     # CRITICAL: Use capital deployment period (loan duration - settlement delay)
     # Longer settlement delay = shorter deployment = HIGHER yield
-    effective_yield = (net_profit / principal) / capital_deployment_years
+    if capital_deployment_years > 0:
+        effective_yield = (net_profit / principal) / capital_deployment_years
+    else:
+        # Edge case: no capital deployment (e.g., 1 installment upfront or extreme float scenario)
+        # Return a very high yield if profitable, very low if not
+        effective_yield = 1000.0 if net_profit > 0 else -1000.0
 
     # Settlement delay impact (for transparency)
     # This shows the BENEFIT of settlement delay (positive impact = higher yield)
     yield_without_delay = (net_profit / principal) / loan_duration_years if loan_duration_years > 0 else 0
-    settlement_delay_benefit = effective_yield - yield_without_delay
+    settlement_delay_benefit = effective_yield - yield_without_delay if capital_deployment_years > 0 else 0
 
     return {
         'effective_yield': effective_yield,
@@ -133,7 +163,10 @@ def calculate_effective_yield(
         'capital_deployment_days': capital_deployment_days,
         'settlement_delay_benefit': settlement_delay_benefit,
         'settlement_delay_days': settlement_delay_days,
-        'is_float_scenario': is_float_scenario
+        'is_float_scenario': is_float_scenario,
+        'first_installment_upfront': first_installment_upfront,
+        'installment_amount': installment_amount,
+        'capital_to_deploy': capital_to_deploy
     }
 
 
@@ -150,6 +183,7 @@ def calculate_required_apr(
     installment_frequency_days: int = 30,
     late_fee_amount: float = 0.0,
     late_installment_pct: float = 0.0,
+    first_installment_upfront: bool = False,
     max_iterations: int = 100,
     tolerance: float = 0.0001
 ) -> float:
@@ -185,7 +219,8 @@ def calculate_required_apr(
             funding_cost_apr=funding_cost_apr,
             installment_frequency_days=installment_frequency_days,
             late_fee_amount=late_fee_amount,
-            late_installment_pct=late_installment_pct
+            late_installment_pct=late_installment_pct,
+            first_installment_upfront=first_installment_upfront
         )
 
         current_yield = result['effective_yield']
@@ -213,6 +248,7 @@ def estimate_interest_free_cap(
     installment_frequency_days: int = 30,
     late_fee_amount: float = 0.0,
     late_installment_pct: float = 0.0,
+    first_installment_upfront: bool = False,
     max_installments: int = 12
 ) -> int:
     """
@@ -245,7 +281,8 @@ def estimate_interest_free_cap(
             funding_cost_apr=funding_cost_apr,
             installment_frequency_days=installment_frequency_days,
             late_fee_amount=late_fee_amount,
-            late_installment_pct=late_installment_pct
+            late_installment_pct=late_installment_pct,
+            first_installment_upfront=first_installment_upfront
         )
 
         if result['effective_yield'] < target_yield:

@@ -61,6 +61,13 @@ installment_frequency = st.sidebar.radio(
 )
 installment_frequency_days = 30 if installment_frequency == "Monthly" else 14
 
+# First installment upfront
+first_installment_upfront = st.sidebar.checkbox(
+    "Charge First Installment Upfront",
+    value=False,
+    help="Customer pays first installment at purchase. Reduces capital deployed and loan duration. Merchant still charged on full transaction value."
+)
+
 # Interest rate
 interest_apr = st.sidebar.slider(
     "Interest Rate (APR %)",
@@ -179,7 +186,8 @@ current_yield_result = calculate_effective_yield(
     funding_cost_apr=funding_cost,
     installment_frequency_days=installment_frequency_days,
     late_fee_amount=late_fee_amount,
-    late_installment_pct=late_installment_pct
+    late_installment_pct=late_installment_pct,
+    first_installment_upfront=first_installment_upfront
 )
 
 # Calculate required APR
@@ -195,7 +203,8 @@ required_apr = calculate_required_apr(
     funding_cost_apr=funding_cost,
     installment_frequency_days=installment_frequency_days,
     late_fee_amount=late_fee_amount,
-    late_installment_pct=late_installment_pct
+    late_installment_pct=late_installment_pct,
+    first_installment_upfront=first_installment_upfront
 )
 
 # Calculate interest-free installment cap
@@ -211,6 +220,7 @@ interest_free_cap = estimate_interest_free_cap(
     installment_frequency_days=installment_frequency_days,
     late_fee_amount=late_fee_amount,
     late_installment_pct=late_installment_pct,
+    first_installment_upfront=first_installment_upfront,
     max_installments=12
 )
 
@@ -279,6 +289,14 @@ with col6:
         help="Yield boost from settlement delay float"
     )
 
+# First installment upfront info - compact
+if first_installment_upfront:
+    installment_amt = current_yield_result['installment_amount']
+    capital_deployed = current_yield_result['capital_to_deploy']
+    loan_days = current_yield_result['loan_duration_days']
+    msg = f"First installment collected upfront ({installment_amt:.2f} USD) — Capital at risk: {capital_deployed:.2f} USD over {loan_days} days"
+    st.info(msg, icon="💰")
+
 # Float scenario warning - compact
 if current_yield_result['is_float_scenario']:
     st.warning(
@@ -306,7 +324,7 @@ with st.expander("💰 Revenue & Cost Breakdown", expanded=False):
         revenue_df['Percentage'] = (revenue_df['Amount ($)'] / revenue_df['Amount ($)'].sum() * 100).round(2)
 
         st.write("**Revenue Sources**")
-        st.dataframe(revenue_df, hide_index=True, use_container_width=True)
+        st.dataframe(revenue_df, hide_index=True, width='stretch')
 
         st.metric("Total Revenue", f"${current_yield_result['total_revenue']:.2f}")
 
@@ -322,7 +340,7 @@ with st.expander("💰 Revenue & Cost Breakdown", expanded=False):
         cost_df = pd.DataFrame(cost_data)
 
         st.write("**Costs & Losses**")
-        st.dataframe(cost_df, hide_index=True, use_container_width=True)
+        st.dataframe(cost_df, hide_index=True, width='stretch')
 
         st.metric("Net Profit", f"${current_yield_result['net_profit']:.2f}")
 
@@ -347,7 +365,8 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         'funding_cost_apr': funding_cost,
         'installment_frequency_days': installment_frequency_days,
         'late_fee_amount': late_fee_amount,
-        'late_installment_pct': late_installment_pct
+        'late_installment_pct': late_installment_pct,
+        'first_installment_upfront': first_installment_upfront
     }
 
     # Chart 1: Yield vs Default Rate
@@ -662,39 +681,39 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
     # Display charts with explanations
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig1, use_container_width=True)
+        st.plotly_chart(fig1, width='stretch', config={'displayModeBar': False})
         st.caption("📉 **Default Rate Impact**: Shows how credit quality affects profitability. Higher defaults directly reduce yield through expected losses. Critical for risk-based pricing decisions.")
     with col2:
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width='stretch', config={'displayModeBar': False})
         st.caption("📅 **Installment Count Impact**: Longer loan terms generally reduce annualized yield because capital is deployed longer. However, more installments = more late fee opportunities.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, width='stretch', config={'displayModeBar': False})
         st.caption("💳 **Merchant Commission Impact**: Higher commissions increase revenue and boost yield. This is often the most controllable lever for profitability since it's negotiated upfront.")
     with col2:
-        st.plotly_chart(fig4, use_container_width=True)
+        st.plotly_chart(fig4, width='stretch', config={'displayModeBar': False})
         st.caption("⏱️ **Settlement Delay Impact**: Delaying merchant payment increases yield by keeping more capital working longer. Major profitability lever with minimal risk if managed properly.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig5, use_container_width=True)
+        st.plotly_chart(fig5, width='stretch', config={'displayModeBar': False})
         st.caption("💰 **APR Impact**: Interest rate is the most direct yield driver. Linear relationship - each percentage point increase in APR translates to higher effective yield. Set to 0% for interest-free plans.")
     with col2:
-        st.plotly_chart(fig6, use_container_width=True)
+        st.plotly_chart(fig6, width='stretch', config={'displayModeBar': False})
         st.caption("🛡️ **Fixed Fee Impact**: Fixed fees boost yield and protect against early repayment risk. Unlike interest, they're earned upfront regardless of loan duration.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig7, use_container_width=True)
+        st.plotly_chart(fig7, width='stretch', config={'displayModeBar': False})
         st.caption("⚠️ **Late Fee Impact**: Late fees provide incremental revenue but impact is modest unless late payment rates are high. Balance profitability with customer experience.")
     with col2:
-        st.plotly_chart(fig8, use_container_width=True)
+        st.plotly_chart(fig8, width='stretch', config={'displayModeBar': False})
         st.caption("♻️ **Recovery Rate Impact**: Higher recovery on defaulted loans reduces net losses and improves yield. Invest in collections infrastructure to move this needle.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig9, use_container_width=True)
+        st.plotly_chart(fig9, width='stretch', config={'displayModeBar': False})
         st.caption("💸 **Funding Cost Impact**: Your cost of capital directly reduces net yield. Lower funding costs = higher profitability. Critical for debt-financed BNPL models.")
     with col2:
         st.write("")  # Empty placeholder for symmetry
