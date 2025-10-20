@@ -681,39 +681,39 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
     # Display charts with explanations
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig1, width='stretch', config={'displayModeBar': False})
+        st.plotly_chart(fig1, config={'displayModeBar': False})
         st.caption("📉 **Default Rate Impact**: Shows how credit quality affects profitability. Higher defaults directly reduce yield through expected losses. Critical for risk-based pricing decisions.")
     with col2:
-        st.plotly_chart(fig2, width='stretch', config={'displayModeBar': False})
+        st.plotly_chart(fig2, config={'displayModeBar': False})
         st.caption("📅 **Installment Count Impact**: Longer loan terms generally reduce annualized yield because capital is deployed longer. However, more installments = more late fee opportunities.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig3, width='stretch', config={'displayModeBar': False})
+        st.plotly_chart(fig3, config={'displayModeBar': False})
         st.caption("💳 **Merchant Commission Impact**: Higher commissions increase revenue and boost yield. This is often the most controllable lever for profitability since it's negotiated upfront.")
     with col2:
-        st.plotly_chart(fig4, width='stretch', config={'displayModeBar': False})
+        st.plotly_chart(fig4, config={'displayModeBar': False})
         st.caption("⏱️ **Settlement Delay Impact**: Delaying merchant payment increases yield by keeping more capital working longer. Major profitability lever with minimal risk if managed properly.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig5, width='stretch', config={'displayModeBar': False})
+        st.plotly_chart(fig5, config={'displayModeBar': False})
         st.caption("💰 **APR Impact**: Interest rate is the most direct yield driver. Linear relationship - each percentage point increase in APR translates to higher effective yield. Set to 0% for interest-free plans.")
     with col2:
-        st.plotly_chart(fig6, width='stretch', config={'displayModeBar': False})
+        st.plotly_chart(fig6, config={'displayModeBar': False})
         st.caption("🛡️ **Fixed Fee Impact**: Fixed fees boost yield and protect against early repayment risk. Unlike interest, they're earned upfront regardless of loan duration.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig7, width='stretch', config={'displayModeBar': False})
+        st.plotly_chart(fig7, config={'displayModeBar': False})
         st.caption("⚠️ **Late Fee Impact**: Late fees provide incremental revenue but impact is modest unless late payment rates are high. Balance profitability with customer experience.")
     with col2:
-        st.plotly_chart(fig8, width='stretch', config={'displayModeBar': False})
+        st.plotly_chart(fig8, config={'displayModeBar': False})
         st.caption("♻️ **Recovery Rate Impact**: Higher recovery on defaulted loans reduces net losses and improves yield. Invest in collections infrastructure to move this needle.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig9, width='stretch', config={'displayModeBar': False})
+        st.plotly_chart(fig9, config={'displayModeBar': False})
         st.caption("💸 **Funding Cost Impact**: Your cost of capital directly reduces net yield. Lower funding costs = higher profitability. Critical for debt-financed BNPL models.")
     with col2:
         st.write("")  # Empty placeholder for symmetry
