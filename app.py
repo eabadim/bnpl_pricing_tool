@@ -176,7 +176,7 @@ with st.sidebar.expander("**Business & Risk**", expanded=False):
     merchant_commission = st.slider(
         "Merchant Commission (%)",
         min_value=0.0,
-        max_value=10.0,
+        max_value=20.0,
         value=1.0,
         step=0.1,
         help="Fee charged to merchants"
@@ -679,7 +679,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
     )
 
     # Chart 3: Yield vs Merchant Commission
-    commission_range = np.linspace(0.01, 0.10, 20)
+    commission_range = np.linspace(0.01, 0.20, 20)
     yields_by_commission = []
 
     for comm in commission_range:
@@ -1224,7 +1224,7 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
             comp_merchant_comm = st.slider(
                 "Merchant Commission (%)",
                 min_value=0.0,
-                max_value=10.0,
+                max_value=20.0,
                 step=0.1,
                 key="comp_merchant_comm_input"
             )
