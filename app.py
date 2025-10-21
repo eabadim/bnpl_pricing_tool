@@ -399,6 +399,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         title="Effective Yield vs Default Rate",
         xaxis_title="Default Rate (%)",
         yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
         hovermode='x unified',
         height=300
     )
@@ -432,6 +433,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         title="Effective Yield vs Installment Count",
         xaxis_title="Number of Installments",
         yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
         hovermode='x unified',
         height=300
     )
@@ -465,6 +467,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         title="Effective Yield vs Merchant Commission",
         xaxis_title="Merchant Commission (%)",
         yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
         hovermode='x unified',
         height=300
     )
@@ -504,6 +507,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         title="Yield vs Settlement Delay",
         xaxis_title="Settlement Delay (days)",
         yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
         hovermode='x unified',
         height=300
     )
@@ -542,6 +546,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         title="Effective Yield vs APR",
         xaxis_title="APR (%)",
         yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
         hovermode='x unified',
         height=300
     )
@@ -575,6 +580,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         title="Effective Yield vs Fixed Fee",
         xaxis_title="Fixed Fee (%)",
         yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
         hovermode='x unified',
         height=300
     )
@@ -608,6 +614,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         title="Effective Yield vs Late Fee Amount",
         xaxis_title="Late Fee Amount ($)",
         yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
         hovermode='x unified',
         height=300
     )
@@ -641,6 +648,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         title="Effective Yield vs Recovery Rate",
         xaxis_title="Recovery Rate (%)",
         yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
         hovermode='x unified',
         height=300
     )
@@ -674,6 +682,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         title="Effective Yield vs Funding Cost",
         xaxis_title="Funding Cost APR (%)",
         yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
         hovermode='x unified',
         height=300
     )
