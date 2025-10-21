@@ -19,7 +19,9 @@ def calculate_effective_yield(
     installment_frequency_days: int = 30,
     late_fee_amount: float = 0.0,
     late_installment_pct: float = 0.0,
-    first_installment_upfront: bool = False
+    first_installment_upfront: bool = False,
+    early_repayment_rate: float = 0.0,
+    avg_repayment_installment: int = None
 ) -> Dict[str, float]:
     """
     Calculate the effective annualized yield for a BNPL loan.
@@ -44,9 +46,11 @@ def calculate_effective_yield(
         late_fee_amount: Late fee amount in $ per late installment
         late_installment_pct: % of installments paid late (as decimal, e.g., 0.20 for 20%)
         first_installment_upfront: If True, customer pays first installment at purchase (Day 0)
+        early_repayment_rate: % of loans repaid early (as decimal, e.g., 0.30 for 30%)
+        avg_repayment_installment: Average installment number at which early repayment occurs
 
     Returns:
-        Dictionary with yield breakdown
+        Dictionary with yield breakdown (blended if early_repayment_rate > 0)
     """
     # Validation: Can't have first installment upfront with only 1 installment
     if first_installment_upfront and installments <= 1:
@@ -148,6 +152,84 @@ def calculate_effective_yield(
     yield_without_delay = (net_profit / principal) / loan_duration_years if loan_duration_years > 0 else 0
     settlement_delay_benefit = effective_yield - yield_without_delay if capital_deployment_years > 0 else 0
 
+    # Early repayment blending logic
+    has_early_repayment = early_repayment_rate > 0 and avg_repayment_installment and avg_repayment_installment < installments
+
+    if has_early_repayment:
+        # Store regular portfolio results
+        regular_pct = 1 - early_repayment_rate
+        regular_results = {
+            'interest_income': interest_income,
+            'late_fee_income': late_fee_income,
+            'total_revenue': total_revenue,
+            'funding_cost': funding_cost,
+            'expected_loss': expected_loss,
+            'net_profit': net_profit,
+            'effective_yield': effective_yield,
+            'capital_deployment_days': capital_deployment_days
+        }
+
+        # Calculate early repayment portfolio (these customers repay early and don't default)
+        early_pct = early_repayment_rate
+        early_loan_duration_days = avg_repayment_installment * installment_frequency_days
+        early_loan_duration_years = early_loan_duration_days / 365
+
+        # Early repayment interest (reduced due to shorter term)
+        early_interest_rate = apr * early_loan_duration_years * 0.5
+        early_interest_income = principal * early_interest_rate
+
+        # Early repayment late fees (fewer installments)
+        early_late_fee_income = avg_repayment_installment * late_installment_pct * late_fee_amount
+
+        # Fixed fee and merchant commission are PROTECTED (still earned in full)
+        early_fixed_fee_income = principal * fixed_fee_pct
+        early_merchant_commission = principal * merchant_commission_pct
+
+        # Early repayers don't default (higher quality customers)
+        early_expected_loss = 0.0
+
+        # Capital deployment for early repayment
+        if settlement_delay_days >= early_loan_duration_days:
+            early_capital_deployment_days = early_loan_duration_days * 0.25
+        else:
+            early_capital_deployment_days = early_loan_duration_days - settlement_delay_days
+        early_capital_deployment_years = early_capital_deployment_days / 365
+
+        # Funding cost for early repayment
+        early_funding_cost = capital_to_deploy * funding_cost_apr * early_capital_deployment_years
+
+        # Total revenue and profit for early repayment
+        early_total_revenue = early_interest_income + early_fixed_fee_income + early_merchant_commission + early_late_fee_income
+        early_net_profit = early_total_revenue - early_funding_cost - early_expected_loss
+
+        # Effective yield for early repayment
+        if early_capital_deployment_years > 0:
+            early_effective_yield = (early_net_profit / principal) / early_capital_deployment_years
+        else:
+            early_effective_yield = 1000.0 if early_net_profit > 0 else -1000.0
+
+        # Blend the two portfolios (weighted average)
+        interest_income = (regular_results['interest_income'] * regular_pct) + (early_interest_income * early_pct)
+        late_fee_income = (regular_results['late_fee_income'] * regular_pct) + (early_late_fee_income * early_pct)
+        total_revenue = (regular_results['total_revenue'] * regular_pct) + (early_total_revenue * early_pct)
+        funding_cost = (regular_results['funding_cost'] * regular_pct) + (early_funding_cost * early_pct)
+        expected_loss = (regular_results['expected_loss'] * regular_pct) + (early_expected_loss * early_pct)
+        net_profit = (regular_results['net_profit'] * regular_pct) + (early_net_profit * early_pct)
+
+        # Weighted average capital deployment
+        capital_deployment_days = (regular_results['capital_deployment_days'] * regular_pct) + (early_capital_deployment_days * early_pct)
+        capital_deployment_years = capital_deployment_days / 365
+
+        # Blended effective yield
+        if capital_deployment_years > 0:
+            effective_yield = (net_profit / principal) / capital_deployment_years
+        else:
+            effective_yield = 1000.0 if net_profit > 0 else -1000.0
+
+        # Recalculate settlement delay benefit
+        yield_without_delay = (net_profit / principal) / loan_duration_years if loan_duration_years > 0 else 0
+        settlement_delay_benefit = effective_yield - yield_without_delay if capital_deployment_years > 0 else 0
+
     return {
         'effective_yield': effective_yield,
         'interest_income': interest_income,
@@ -166,7 +248,10 @@ def calculate_effective_yield(
         'is_float_scenario': is_float_scenario,
         'first_installment_upfront': first_installment_upfront,
         'installment_amount': installment_amount,
-        'capital_to_deploy': capital_to_deploy
+        'capital_to_deploy': capital_to_deploy,
+        'has_early_repayment': has_early_repayment,
+        'early_repayment_rate': early_repayment_rate if has_early_repayment else 0.0,
+        'avg_repayment_installment': avg_repayment_installment if has_early_repayment else None
     }
 
 
@@ -184,6 +269,8 @@ def calculate_required_apr(
     late_fee_amount: float = 0.0,
     late_installment_pct: float = 0.0,
     first_installment_upfront: bool = False,
+    early_repayment_rate: float = 0.0,
+    avg_repayment_installment: int = None,
     max_iterations: int = 100,
     tolerance: float = 0.0001
 ) -> float:
@@ -220,7 +307,9 @@ def calculate_required_apr(
             installment_frequency_days=installment_frequency_days,
             late_fee_amount=late_fee_amount,
             late_installment_pct=late_installment_pct,
-            first_installment_upfront=first_installment_upfront
+            first_installment_upfront=first_installment_upfront,
+            early_repayment_rate=early_repayment_rate,
+            avg_repayment_installment=avg_repayment_installment
         )
 
         current_yield = result['effective_yield']
@@ -249,6 +338,8 @@ def estimate_interest_free_cap(
     late_fee_amount: float = 0.0,
     late_installment_pct: float = 0.0,
     first_installment_upfront: bool = False,
+    early_repayment_rate: float = 0.0,
+    avg_repayment_installment: int = None,
     max_installments: int = 12
 ) -> int:
     """
@@ -282,7 +373,9 @@ def estimate_interest_free_cap(
             installment_frequency_days=installment_frequency_days,
             late_fee_amount=late_fee_amount,
             late_installment_pct=late_installment_pct,
-            first_installment_upfront=first_installment_upfront
+            first_installment_upfront=first_installment_upfront,
+            early_repayment_rate=early_repayment_rate,
+            avg_repayment_installment=avg_repayment_installment
         )
 
         if result['effective_yield'] < target_yield:
