@@ -29,23 +29,27 @@ st.set_page_config(
 # Header
 st.title("BNPL Pricing Strategy Simulator")
 
-# Initialize session state for comparison scenario (matches Scenario A defaults)
-if 'comp_principal' not in st.session_state:
-    st.session_state.comp_principal = 100.0
-    st.session_state.comp_installments = 7
-    st.session_state.comp_frequency = "Biweekly"  # Different from Scenario A (Monthly)
-    st.session_state.comp_first_upfront = False
-    st.session_state.comp_early_rate = 0.0
-    st.session_state.comp_early_inst = 3
-    st.session_state.comp_apr = 250.0  # Matches sidebar default (250% APR)
-    st.session_state.comp_fixed_fee = 0.0
-    st.session_state.comp_late_fee = 3.0
-    st.session_state.comp_late_pct = 20.0
-    st.session_state.comp_merchant_comm = 1.0
-    st.session_state.comp_settlement = 1
-    st.session_state.comp_default = 15.0
-    st.session_state.comp_recovery = 10.0
-    st.session_state.comp_funding = 8.0
+# Initialize session state for comparison scenario (use widget keys directly)
+if 'comp_principal_input' not in st.session_state:
+    st.session_state.comp_principal_input = 100.0
+    st.session_state.comp_installments_input = 7
+    st.session_state.comp_frequency_input = "Biweekly"  # Different from Scenario A (Monthly)
+    st.session_state.comp_first_upfront_input = False
+    st.session_state.comp_early_rate_input = 0.0
+    st.session_state.comp_early_inst_input = 3
+    st.session_state.comp_late_repay_rate_input = 0.0
+    st.session_state.comp_days_late_input = 5
+    st.session_state.comp_apr_input = 250.0  # Matches sidebar default (250% APR)
+    st.session_state.comp_fixed_fee_input = 0.0
+    st.session_state.comp_late_fee_input = 3.0
+    st.session_state.comp_late_pct_input = 20.0
+    st.session_state.comp_merchant_comm_input = 1.0
+    st.session_state.comp_settlement_input = 1
+    st.session_state.comp_fraud_rate_input = 0.0
+    st.session_state.comp_default_input = 15.0
+    st.session_state.comp_recovery_input = 10.0
+    st.session_state.comp_fraud_recovery_input = 10.0
+    st.session_state.comp_funding_input = 8.0
 
 # Sidebar inputs
 st.sidebar.header("Configuration")
@@ -84,17 +88,17 @@ with st.sidebar.expander("**Loan Parameters**", expanded=False):
         help="Customer pays first installment at purchase. Reduces capital deployed and loan duration. Merchant still charged on full transaction value."
     )
 
-with st.sidebar.expander("**Early Repayment**", expanded=False):
+with st.sidebar.expander("**Payment Behavior**", expanded=False):
+    st.markdown("**Early Repayment**")
     early_repayment_rate = st.slider(
         "Early Repayment Rate (%)",
         min_value=0.0,
         max_value=50.0,
         value=0.0,
         step=1.0,
-        help="Percentage of loans repaid early. Early repayers are assumed to be higher quality (no defaults) but generate less interest income."
+        help="Percentage of loans repaid early (zero defaults, reduced interest income)"
     ) / 100.0
 
-    # Only show avg repayment installment if early repayment is enabled
     avg_repayment_installment = None
     if early_repayment_rate > 0:
         avg_repayment_installment = st.slider(
@@ -102,7 +106,28 @@ with st.sidebar.expander("**Early Repayment**", expanded=False):
             min_value=1,
             max_value=max(1, avg_installments - 1),
             value=max(1, avg_installments // 2),
-            help="Average installment number at which early repayment occurs (e.g., installment 3 out of 6)"
+            help="Average installment number at which early repayment occurs"
+        )
+
+    st.markdown("---")
+    st.markdown("**Late Repayment**")
+    late_repayment_rate = st.slider(
+        "Late Repayment Rate (%)",
+        min_value=0.0,
+        max_value=50.0,
+        value=0.0,
+        step=1.0,
+        help="Percentage of loans that pay late (zero defaults, extra interest + all late fees)"
+    ) / 100.0
+
+    avg_days_late_per_installment = 0
+    if late_repayment_rate > 0:
+        avg_days_late_per_installment = st.slider(
+            "Avg Days Late Per Installment",
+            min_value=0,
+            max_value=30,
+            value=5,
+            help="Average days late per installment payment"
         )
 
 with st.sidebar.expander("**Pricing**", expanded=False):
@@ -146,6 +171,7 @@ with st.sidebar.expander("**Late Fees**", expanded=False):
     ) / 100.0
 
 with st.sidebar.expander("**Business & Risk**", expanded=False):
+    st.markdown("**Business Parameters**")
     # Merchant parameters
     merchant_commission = st.slider(
         "Merchant Commission (%)",
@@ -164,23 +190,45 @@ with st.sidebar.expander("**Business & Risk**", expanded=False):
         help="Days until merchant is paid"
     )
 
-    # Risk parameters
+    st.markdown("---")
+    st.markdown("**Loss Rates**")
+    # Fraud and default parameters
+    fraud_rate = st.slider(
+        "Fraud Rate (%)",
+        min_value=0.0,
+        max_value=30.0,
+        value=0.0,
+        step=0.5,
+        help="Customers who never pay (immediate loss)"
+    ) / 100.0
+
     default_rate = st.slider(
         "Default Rate (%)",
         min_value=0.0,
         max_value=30.0,
         value=15.0,
         step=0.5,
-        help="Expected portfolio default rate"
+        help="Legitimate defaults due to financial hardship"
     ) / 100.0
 
+    st.markdown("---")
+    st.markdown("**Recovery Rates**")
     recovery_rate = st.slider(
-        "Credit Loss Recovery Rate (%)",
+        "Default Recovery Rate (%)",
         min_value=0.0,
         max_value=100.0,
         value=10.0,
         step=5.0,
-        help="% recovered from defaulted loans"
+        help="% recovered from legitimate defaults"
+    ) / 100.0
+
+    fraud_recovery_rate = st.slider(
+        "Fraud Recovery Rate (%)",
+        min_value=0.0,
+        max_value=100.0,
+        value=0.0,
+        step=5.0,
+        help="% recovered from fraud cases"
     ) / 100.0
 
     # Funding cost (optional, defaulted to 0)
@@ -214,8 +262,10 @@ current_yield_result = calculate_effective_yield(
     installments=avg_installments,
     merchant_commission_pct=merchant_commission,
     settlement_delay_days=settlement_delay,
+    fraud_rate=fraud_rate,
     default_rate=default_rate,
     recovery_rate=recovery_rate,
+    fraud_recovery_rate=fraud_recovery_rate,
     fixed_fee_pct=fixed_fee_pct,
     funding_cost_apr=funding_cost,
     installment_frequency_days=installment_frequency_days,
@@ -223,7 +273,9 @@ current_yield_result = calculate_effective_yield(
     late_installment_pct=late_installment_pct,
     first_installment_upfront=first_installment_upfront,
     early_repayment_rate=early_repayment_rate,
-    avg_repayment_installment=avg_repayment_installment
+    avg_repayment_installment=avg_repayment_installment,
+    late_repayment_rate=late_repayment_rate,
+    avg_days_late_per_installment=avg_days_late_per_installment
 )
 
 # Calculate required APR
@@ -233,26 +285,10 @@ required_apr = calculate_required_apr(
     installments=avg_installments,
     merchant_commission_pct=merchant_commission,
     settlement_delay_days=settlement_delay,
+    fraud_rate=fraud_rate,
     default_rate=default_rate,
     recovery_rate=recovery_rate,
-    fixed_fee_pct=fixed_fee_pct,
-    funding_cost_apr=funding_cost,
-    installment_frequency_days=installment_frequency_days,
-    late_fee_amount=late_fee_amount,
-    late_installment_pct=late_installment_pct,
-    first_installment_upfront=first_installment_upfront,
-    early_repayment_rate=early_repayment_rate,
-    avg_repayment_installment=avg_repayment_installment
-)
-
-# Calculate interest-free installment cap
-interest_free_cap = estimate_interest_free_cap(
-    target_yield=target_yield,
-    principal=avg_principal,
-    merchant_commission_pct=merchant_commission,
-    settlement_delay_days=settlement_delay,
-    default_rate=default_rate,
-    recovery_rate=recovery_rate,
+    fraud_recovery_rate=fraud_recovery_rate,
     fixed_fee_pct=fixed_fee_pct,
     funding_cost_apr=funding_cost,
     installment_frequency_days=installment_frequency_days,
@@ -261,6 +297,30 @@ interest_free_cap = estimate_interest_free_cap(
     first_installment_upfront=first_installment_upfront,
     early_repayment_rate=early_repayment_rate,
     avg_repayment_installment=avg_repayment_installment,
+    late_repayment_rate=late_repayment_rate,
+    avg_days_late_per_installment=avg_days_late_per_installment
+)
+
+# Calculate interest-free installment cap
+interest_free_cap = estimate_interest_free_cap(
+    target_yield=target_yield,
+    principal=avg_principal,
+    merchant_commission_pct=merchant_commission,
+    settlement_delay_days=settlement_delay,
+    fraud_rate=fraud_rate,
+    default_rate=default_rate,
+    recovery_rate=recovery_rate,
+    fraud_recovery_rate=fraud_recovery_rate,
+    fixed_fee_pct=fixed_fee_pct,
+    funding_cost_apr=funding_cost,
+    installment_frequency_days=installment_frequency_days,
+    late_fee_amount=late_fee_amount,
+    late_installment_pct=late_installment_pct,
+    first_installment_upfront=first_installment_upfront,
+    early_repayment_rate=early_repayment_rate,
+    avg_repayment_installment=avg_repayment_installment,
+    late_repayment_rate=late_repayment_rate,
+    avg_days_late_per_installment=avg_days_late_per_installment,
     max_installments=12
 )
 
@@ -344,6 +404,37 @@ if current_yield_result['has_early_repayment']:
     msg = f"Portfolio blending enabled: {early_pct:.0f}% of loans repay early at installment {early_inst} (zero defaults, reduced interest income)"
     st.info(msg, icon="⚡")
 
+# Late repayment info - compact
+if current_yield_result['has_late_repayment']:
+    late_pct = current_yield_result['late_repayment_rate'] * 100
+    days_late = current_yield_result['avg_days_late_per_installment']
+    total_delay = avg_installments * days_late
+    msg = f"Late repayment enabled: {late_pct:.0f}% of loans pay {days_late}d late per installment (+{total_delay}d total, zero defaults, increased interest + all late fees)"
+    st.info(msg, icon="🕐")
+
+# Portfolio breakdown - show when multiple segments active
+if current_yield_result['has_portfolio_segmentation']:
+    early_pct = current_yield_result['early_repayment_rate'] * 100
+    late_pct = current_yield_result['late_repayment_rate'] * 100
+    default_pct = current_yield_result['default_rate'] * 100
+    fraud_pct = current_yield_result['fraud_rate'] * 100
+    ontime_pct = current_yield_result['ontime_pct'] * 100
+
+    segments = []
+    if early_pct > 0:
+        segments.append(f"{early_pct:.0f}% early")
+    if late_pct > 0:
+        segments.append(f"{late_pct:.0f}% late")
+    if ontime_pct > 0:
+        segments.append(f"{ontime_pct:.0f}% on-time")
+    if default_pct > 0:
+        segments.append(f"{default_pct:.0f}% default")
+    if fraud_pct > 0:
+        segments.append(f"{fraud_pct:.0f}% fraud")
+
+    msg = f"Five-way portfolio: {' | '.join(segments)}"
+    st.info(msg, icon="📊")
+
 # Float scenario warning - compact
 if current_yield_result['is_float_scenario']:
     st.warning(
@@ -360,11 +451,12 @@ with st.expander("💰 Revenue & Cost Breakdown", expanded=False):
     waterfall_text = []
     waterfall_measure = []
 
-    # Revenue components (in order: Merchant Commission, Fixed Fee, Interest, Late Fees)
+    # Revenue components (in order: Merchant Commission, Fixed Fee, Interest, Late Interest, Late Fees)
     revenue_components = [
         ("Merchant<br>Commission", current_yield_result['merchant_commission']),
         ("Fixed<br>Fee", current_yield_result['fixed_fee_income']),
         ("Interest<br>Income", current_yield_result['interest_income']),
+        ("Late<br>Interest", current_yield_result['late_interest_income']),
         ("Late<br>Fees", current_yield_result['late_fee_income'])
     ]
 
@@ -382,9 +474,10 @@ with st.expander("💰 Revenue & Cost Breakdown", expanded=False):
     waterfall_text.append(f"${current_yield_result['total_revenue']:.2f}")
     waterfall_measure.append("total")
 
-    # Cost components
+    # Cost components (show default and fraud losses separately)
     cost_components = [
-        ("Expected<br>Loss", current_yield_result['expected_loss']),
+        ("Default<br>Loss", current_yield_result['default_loss']),
+        ("Fraud<br>Loss", current_yield_result['fraud_loss']),
         ("Funding<br>Cost", current_yield_result['funding_cost'])
     ]
 
@@ -444,18 +537,22 @@ with st.expander("💰 Revenue & Cost Breakdown", expanded=False):
     col1, col2 = st.columns(2)
 
     with col1:
-        # Revenue components
+        # Revenue components (show late interest separately)
         revenue_data = {
-            'Component': ['Interest Income', 'Fixed Fee', 'Merchant Commission', 'Late Fees'],
+            'Component': ['Interest Income', 'Late Interest', 'Fixed Fee', 'Merchant Commission', 'Late Fees'],
             'Amount ($)': [
                 current_yield_result['interest_income'],
+                current_yield_result['late_interest_income'],
                 current_yield_result['fixed_fee_income'],
                 current_yield_result['merchant_commission'],
                 current_yield_result['late_fee_income']
             ]
         }
         revenue_df = pd.DataFrame(revenue_data)
-        revenue_df['Percentage'] = (revenue_df['Amount ($)'] / revenue_df['Amount ($)'].sum() * 100).round(2)
+        # Filter out zero values
+        revenue_df = revenue_df[revenue_df['Amount ($)'] > 0]
+        if not revenue_df.empty:
+            revenue_df['Percentage'] = (revenue_df['Amount ($)'] / revenue_df['Amount ($)'].sum() * 100).round(2)
 
         st.write("**Revenue Sources**")
         st.dataframe(revenue_df, hide_index=True, width='stretch')
@@ -463,15 +560,18 @@ with st.expander("💰 Revenue & Cost Breakdown", expanded=False):
         st.metric("Total Revenue", f"${current_yield_result['total_revenue']:.2f}")
 
     with col2:
-        # Cost/loss components
+        # Cost/loss components (show default and fraud separately)
         cost_data = {
-            'Component': ['Funding Cost', 'Expected Loss'],
+            'Component': ['Default Loss', 'Fraud Loss', 'Funding Cost'],
             'Amount ($)': [
-                current_yield_result['funding_cost'],
-                current_yield_result['expected_loss']
+                current_yield_result['default_loss'],
+                current_yield_result['fraud_loss'],
+                current_yield_result['funding_cost']
             ]
         }
         cost_df = pd.DataFrame(cost_data)
+        # Filter out zero values
+        cost_df = cost_df[cost_df['Amount ($)'] > 0]
 
         st.write("**Costs & Losses**")
         st.dataframe(cost_df, hide_index=True, width='stretch')
@@ -493,8 +593,10 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         'installments': avg_installments,
         'merchant_commission_pct': merchant_commission,
         'settlement_delay_days': settlement_delay,
+        'fraud_rate': fraud_rate,
         'default_rate': default_rate,
         'recovery_rate': recovery_rate,
+        'fraud_recovery_rate': fraud_recovery_rate,
         'fixed_fee_pct': fixed_fee_pct,
         'funding_cost_apr': funding_cost,
         'installment_frequency_days': installment_frequency_days,
@@ -502,7 +604,9 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         'late_installment_pct': late_installment_pct,
         'first_installment_upfront': first_installment_upfront,
         'early_repayment_rate': early_repayment_rate,
-        'avg_repayment_installment': avg_repayment_installment
+        'avg_repayment_installment': avg_repayment_installment,
+        'late_repayment_rate': late_repayment_rate,
+        'avg_days_late_per_installment': avg_days_late_per_installment
     }
 
     # Chart 1: Yield vs Default Rate
@@ -892,6 +996,76 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         height=300
     )
 
+    # Chart 11: Yield vs Late Repayment Rate
+    late_repayment_range = np.linspace(0, 0.50, 20)  # 0% to 50%
+    yields_by_late_repayment = []
+
+    for late_rate in late_repayment_range:
+        params = base_params.copy()
+        params['apr'] = interest_apr
+        params['late_repayment_rate'] = late_rate
+        # Use reasonable default for days late if rate > 0
+        params['avg_days_late_per_installment'] = avg_days_late_per_installment if late_rate > 0 else 0
+        result = calculate_effective_yield(**params)
+        yields_by_late_repayment.append(result['effective_yield'])
+
+    fig11 = go.Figure()
+    fig11.add_trace(go.Scatter(
+        x=late_repayment_range * 100,
+        y=np.array(yields_by_late_repayment) * 100,
+        mode='lines+markers',
+        name='Effective Yield',
+        line=dict(color='orange', width=2)
+    ))
+    fig11.add_hline(
+        y=target_yield * 100,
+        line_dash="dash",
+        line_color="red",
+        annotation_text="Target Yield"
+    )
+    fig11.update_layout(
+        title="Effective Yield vs Late Repayment Rate",
+        xaxis_title="Late Repayment Rate (%)",
+        yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
+        hovermode='x unified',
+        height=300
+    )
+
+    # Chart 12: Yield vs Fraud Rate
+    fraud_rate_range = np.linspace(0, 0.30, 20)  # 0% to 30%
+    yields_by_fraud = []
+
+    for fraud in fraud_rate_range:
+        params = base_params.copy()
+        params['apr'] = interest_apr
+        params['fraud_rate'] = fraud
+        result = calculate_effective_yield(**params)
+        yields_by_fraud.append(result['effective_yield'])
+
+    fig12 = go.Figure()
+    fig12.add_trace(go.Scatter(
+        x=fraud_rate_range * 100,
+        y=np.array(yields_by_fraud) * 100,
+        mode='lines+markers',
+        name='Effective Yield',
+        line=dict(color='red', width=2)
+    ))
+    fig12.add_hline(
+        y=target_yield * 100,
+        line_dash="dash",
+        line_color="red",
+        annotation_text="Target Yield"
+    )
+    fig12.update_layout(
+        title="Effective Yield vs Fraud Rate",
+        xaxis_title="Fraud Rate (%)",
+        yaxis_title="Effective Yield (%)",
+        yaxis_range=[-25, 150],
+        hovermode='x unified',
+        height=300
+    )
+
     col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(fig9, config={'displayModeBar': False})
@@ -899,6 +1073,14 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
     with col2:
         st.plotly_chart(fig10, config={'displayModeBar': False})
         st.caption("⚡ **Early Repayment Impact**: Early repayments reduce interest income (shorter loan duration) but improve portfolio quality (zero defaults on early repayers). Net impact depends on APR level and default rates.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.plotly_chart(fig11, config={'displayModeBar': False})
+        st.caption("🕐 **Late Repayment Impact**: Late repayers increase yield through extended interest accrual and guaranteed late fees on ALL installments. Zero defaults on late segment. Positive yield impact if days late > 0.")
+    with col2:
+        st.plotly_chart(fig12, config={'displayModeBar': False})
+        st.caption("🚨 **Fraud Rate Impact**: Fraud cases generate immediate losses with minimal recovery. Distinct from defaults - fraudsters never intend to pay. Critical to minimize through identity verification and fraud detection.")
 
 # Scenario Comparison
 with st.expander("🔄 Scenario Comparison", expanded=False):
@@ -909,22 +1091,33 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
 
     # Copy current scenario button
     if st.button("📋 Copy Current Scenario to Comparison"):
-        st.session_state.comp_principal = avg_principal
-        st.session_state.comp_installments = avg_installments
-        st.session_state.comp_frequency = installment_frequency
-        st.session_state.comp_first_upfront = first_installment_upfront
-        st.session_state.comp_early_rate = early_repayment_rate * 100
-        st.session_state.comp_early_inst = avg_repayment_installment if avg_repayment_installment else max(1, avg_installments // 2)
-        st.session_state.comp_apr = interest_apr * 100
-        st.session_state.comp_fixed_fee = fixed_fee_pct * 100
-        st.session_state.comp_late_fee = late_fee_amount
-        st.session_state.comp_late_pct = late_installment_pct * 100
-        st.session_state.comp_merchant_comm = merchant_commission * 100
-        st.session_state.comp_settlement = settlement_delay
-        st.session_state.comp_default = default_rate * 100
-        st.session_state.comp_recovery = recovery_rate * 100
-        st.session_state.comp_funding = funding_cost * 100
+        # Update only the widget keys (with _input suffix)
+        st.session_state.comp_principal_input = avg_principal
+        st.session_state.comp_installments_input = avg_installments
+        st.session_state.comp_frequency_input = installment_frequency
+        st.session_state.comp_first_upfront_input = first_installment_upfront
+        st.session_state.comp_early_rate_input = early_repayment_rate * 100
+        st.session_state.comp_early_inst_input = avg_repayment_installment if avg_repayment_installment else max(1, avg_installments // 2)
+        st.session_state.comp_late_repay_rate_input = late_repayment_rate * 100
+        st.session_state.comp_days_late_input = avg_days_late_per_installment
+        st.session_state.comp_apr_input = interest_apr * 100
+        st.session_state.comp_fixed_fee_input = fixed_fee_pct * 100
+        st.session_state.comp_late_fee_input = late_fee_amount
+        st.session_state.comp_late_pct_input = late_installment_pct * 100
+        st.session_state.comp_merchant_comm_input = merchant_commission * 100
+        st.session_state.comp_settlement_input = settlement_delay
+        st.session_state.comp_fraud_rate_input = fraud_rate * 100
+        st.session_state.comp_default_input = default_rate * 100
+        st.session_state.comp_recovery_input = recovery_rate * 100
+        st.session_state.comp_fraud_recovery_input = fraud_recovery_rate * 100
+        st.session_state.comp_funding_input = funding_cost * 100
+        st.session_state.show_copy_success = True
         st.rerun()
+
+    # Show success message after copy
+    if st.session_state.get('show_copy_success', False):
+        st.success("✅ Current scenario copied to Scenario B! Expand the configuration below to view/adjust.")
+        st.session_state.show_copy_success = False
 
     st.markdown("---")
 
@@ -938,7 +1131,6 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "Principal ($)",
                 min_value=20.0,
                 max_value=10000.0,
-                value=st.session_state.comp_principal,
                 step=10.0,
                 key="comp_principal_input"
             )
@@ -946,18 +1138,16 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "Installments",
                 min_value=1,
                 max_value=36,
-                value=st.session_state.comp_installments,
                 key="comp_installments_input"
             )
             comp_frequency = st.radio(
                 "Frequency",
                 options=["Biweekly", "Monthly"],
-                index=0 if st.session_state.comp_frequency == "Biweekly" else 1,
+                index=0 if st.session_state.comp_frequency_input == "Biweekly" else 1,
                 key="comp_frequency_input"
             )
             comp_first_upfront = st.checkbox(
                 "First Installment Upfront",
-                value=st.session_state.comp_first_upfront,
                 key="comp_first_upfront_input"
             )
 
@@ -966,7 +1156,6 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "Early Repayment Rate (%)",
                 min_value=0.0,
                 max_value=50.0,
-                value=st.session_state.comp_early_rate,
                 step=1.0,
                 key="comp_early_rate_input"
             )
@@ -976,8 +1165,25 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                     "Avg Early Installment",
                     min_value=1,
                     max_value=max(1, comp_installments - 1),
-                    value=min(st.session_state.comp_early_inst, max(1, comp_installments - 1)),
+                    value=min(st.session_state.get('comp_early_inst_input', 3), max(1, comp_installments - 1)),
                     key="comp_early_inst_input"
+                )
+
+            st.markdown("**Late Repayment**")
+            comp_late_repay_rate = st.slider(
+                "Late Repayment Rate (%)",
+                min_value=0.0,
+                max_value=50.0,
+                step=1.0,
+                key="comp_late_repay_rate_input"
+            )
+            comp_days_late = 0
+            if comp_late_repay_rate > 0:
+                comp_days_late = st.slider(
+                    "Avg Days Late Per Inst.",
+                    min_value=0,
+                    max_value=30,
+                    key="comp_days_late_input"
                 )
 
         with col2:
@@ -986,7 +1192,6 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "APR (%)",
                 min_value=0.0,
                 max_value=500.0,
-                value=st.session_state.comp_apr,
                 step=5.0,
                 key="comp_apr_input"
             )
@@ -994,7 +1199,6 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "Fixed Fee (%)",
                 min_value=0.0,
                 max_value=100.0,
-                value=st.session_state.comp_fixed_fee,
                 step=1.0,
                 key="comp_fixed_fee_input"
             )
@@ -1004,7 +1208,6 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "Late Fee ($)",
                 min_value=0.0,
                 max_value=20.0,
-                value=st.session_state.comp_late_fee,
                 step=0.50,
                 key="comp_late_fee_input"
             )
@@ -1012,7 +1215,6 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "% Paid Late",
                 min_value=0.0,
                 max_value=100.0,
-                value=st.session_state.comp_late_pct,
                 step=1.0,
                 key="comp_late_pct_input"
             )
@@ -1023,7 +1225,6 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "Merchant Commission (%)",
                 min_value=0.0,
                 max_value=10.0,
-                value=st.session_state.comp_merchant_comm,
                 step=0.1,
                 key="comp_merchant_comm_input"
             )
@@ -1031,26 +1232,37 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "Settlement Delay (days)",
                 min_value=0,
                 max_value=60,
-                value=st.session_state.comp_settlement,
                 key="comp_settlement_input"
             )
 
             st.markdown("**Risk Parameters**")
+            comp_fraud_rate = st.slider(
+                "Fraud Rate (%)",
+                min_value=0.0,
+                max_value=30.0,
+                step=0.5,
+                key="comp_fraud_rate_input"
+            )
             comp_default = st.slider(
                 "Default Rate (%)",
                 min_value=0.0,
                 max_value=30.0,
-                value=st.session_state.comp_default,
                 step=0.5,
                 key="comp_default_input"
             )
             comp_recovery = st.slider(
-                "Recovery Rate (%)",
+                "Default Recovery Rate (%)",
                 min_value=0.0,
                 max_value=100.0,
-                value=st.session_state.comp_recovery,
                 step=5.0,
                 key="comp_recovery_input"
+            )
+            comp_fraud_recovery = st.slider(
+                "Fraud Recovery Rate (%)",
+                min_value=0.0,
+                max_value=100.0,
+                step=5.0,
+                key="comp_fraud_recovery_input"
             )
 
             st.markdown("**Costs**")
@@ -1058,7 +1270,6 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 "Funding Cost APR (%)",
                 min_value=0.0,
                 max_value=20.0,
-                value=st.session_state.comp_funding,
                 step=0.5,
                 key="comp_funding_input"
             )
@@ -1072,8 +1283,10 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
         installments=comp_installments,
         merchant_commission_pct=comp_merchant_comm / 100,
         settlement_delay_days=comp_settlement,
+        fraud_rate=comp_fraud_rate / 100,
         default_rate=comp_default / 100,
         recovery_rate=comp_recovery / 100,
+        fraud_recovery_rate=comp_fraud_recovery / 100,
         fixed_fee_pct=comp_fixed_fee / 100,
         funding_cost_apr=comp_funding / 100,
         installment_frequency_days=comp_frequency_days,
@@ -1081,7 +1294,9 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
         late_installment_pct=comp_late_pct / 100,
         first_installment_upfront=comp_first_upfront,
         early_repayment_rate=comp_early_rate / 100,
-        avg_repayment_installment=comp_early_inst
+        avg_repayment_installment=comp_early_inst,
+        late_repayment_rate=comp_late_repay_rate / 100,
+        avg_days_late_per_installment=comp_days_late
     )
 
     st.markdown("---")
@@ -1152,11 +1367,12 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
         waterfall_text = []
         waterfall_measure = []
 
-        # Revenue components
+        # Revenue components (show late interest separately)
         revenue_components = [
             ("Merchant<br>Commission", result['merchant_commission']),
             ("Fixed<br>Fee", result['fixed_fee_income']),
             ("Interest<br>Income", result['interest_income']),
+            ("Late<br>Interest", result['late_interest_income']),
             ("Late<br>Fees", result['late_fee_income'])
         ]
 
@@ -1172,9 +1388,10 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
         waterfall_text.append(f"${result['total_revenue']:.2f}")
         waterfall_measure.append("total")
 
-        # Cost components
+        # Cost components (show default and fraud separately)
         cost_components = [
-            ("Expected<br>Loss", result['expected_loss']),
+            ("Default<br>Loss", result['default_loss']),
+            ("Fraud<br>Loss", result['fraud_loss']),
             ("Funding<br>Cost", result['funding_cost'])
         ]
 
@@ -1240,9 +1457,10 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
     with table_col1:
         st.markdown("**Revenue Components**")
         revenue_comparison = pd.DataFrame({
-            'Component': ['Interest Income', 'Fixed Fee', 'Merchant Commission', 'Late Fees', '**TOTAL**'],
+            'Component': ['Interest Income', 'Late Interest', 'Fixed Fee', 'Merchant Commission', 'Late Fees', '**TOTAL**'],
             'Scenario A ($)': [
                 current_yield_result['interest_income'],
+                current_yield_result['late_interest_income'],
                 current_yield_result['fixed_fee_income'],
                 current_yield_result['merchant_commission'],
                 current_yield_result['late_fee_income'],
@@ -1250,6 +1468,7 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
             ],
             'Scenario B ($)': [
                 comparison_result['interest_income'],
+                comparison_result['late_interest_income'],
                 comparison_result['fixed_fee_income'],
                 comparison_result['merchant_commission'],
                 comparison_result['late_fee_income'],
@@ -1266,15 +1485,17 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
     with table_col2:
         st.markdown("**Cost Components**")
         cost_comparison = pd.DataFrame({
-            'Component': ['Funding Cost', 'Expected Loss', '**TOTAL**'],
+            'Component': ['Default Loss', 'Fraud Loss', 'Funding Cost', '**TOTAL**'],
             'Scenario A ($)': [
+                current_yield_result['default_loss'],
+                current_yield_result['fraud_loss'],
                 current_yield_result['funding_cost'],
-                current_yield_result['expected_loss'],
                 current_yield_result['funding_cost'] + current_yield_result['expected_loss']
             ],
             'Scenario B ($)': [
+                comparison_result['default_loss'],
+                comparison_result['fraud_loss'],
                 comparison_result['funding_cost'],
-                comparison_result['expected_loss'],
                 comparison_result['funding_cost'] + comparison_result['expected_loss']
             ]
         })
