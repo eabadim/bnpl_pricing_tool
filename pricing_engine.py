@@ -70,9 +70,16 @@ def calculate_effective_yield(
         first_installment_upfront = False
 
     # Validation: Portfolio segments can't exceed 100%
+    # Auto-normalize if they do
     total_portfolio = early_repayment_rate + late_repayment_rate + default_rate + fraud_rate
+    portfolio_normalized = False
     if total_portfolio > 1.0:
-        raise ValueError(f"Portfolio segments exceed 100%: {total_portfolio * 100:.1f}% (early: {early_repayment_rate*100:.1f}%, late: {late_repayment_rate*100:.1f}%, default: {default_rate*100:.1f}%, fraud: {fraud_rate*100:.1f}%)")
+        # Normalize proportionally
+        early_repayment_rate = early_repayment_rate / total_portfolio
+        late_repayment_rate = late_repayment_rate / total_portfolio
+        default_rate = default_rate / total_portfolio
+        fraud_rate = fraud_rate / total_portfolio
+        portfolio_normalized = True
 
     # Calculate installment amount
     installment_amount = principal / installments
@@ -210,21 +217,21 @@ def calculate_effective_yield(
         # SEGMENT 5: FRAUD (immediate loss, different recovery)
         # =================================================================
         if first_installment_upfront:
-            # Fraud cases paid first installment, then disappeared
+            # Fraud cases paid first installment + fixed fee upfront, then disappeared
             fraud_interest_income = 0.0
-            fraud_fixed_fee = 0.0
+            fraud_fixed_fee = principal * fixed_fee_pct  # Fixed fee collected upfront
             fraud_merchant_comm = principal * merchant_commission_pct  # Still charged
             fraud_late_fees = 0.0
-            fraud_expected_loss = (capital_to_deploy) * (1 - fraud_recovery_rate)
+            fraud_expected_loss = (capital_to_deploy) * (1 - fraud_recovery_rate)  # Loss only on capital deployed (after first installment collected)
             fraud_funding_cost = capital_to_deploy * funding_cost_apr * capital_deployment_years
             fraud_cap_deploy_days = capital_deployment_days
         else:
             # Fraud cases never paid anything
             fraud_interest_income = 0.0
-            fraud_fixed_fee = 0.0
+            fraud_fixed_fee = 0.0  # No fixed fee collected
             fraud_merchant_comm = principal * merchant_commission_pct  # Still charged
             fraud_late_fees = 0.0
-            fraud_expected_loss = principal * (1 - fraud_recovery_rate)
+            fraud_expected_loss = principal * (1 - fraud_recovery_rate)  # Full principal lost
             fraud_funding_cost = capital_to_deploy * funding_cost_apr * capital_deployment_years
             fraud_cap_deploy_days = capital_deployment_days
 
@@ -288,6 +295,18 @@ def calculate_effective_yield(
                                   fraud_cap_deploy_days * fraud_pct)
         capital_deployment_years = capital_deployment_days / 365
 
+        # Calculate blended loan duration (before settlement delay adjustment)
+        # This accounts for early/late repayers having different loan durations
+        early_loan_dur = avg_repayment_installment * installment_frequency_days if has_early_repayment else 0
+        late_loan_dur = loan_duration_days + (installments * avg_days_late_per_installment) if has_late_repayment else 0
+
+        blended_loan_duration_days = (early_loan_dur * early_pct +
+                                      late_loan_dur * late_pct +
+                                      loan_duration_days * ontime_pct +
+                                      loan_duration_days * default_pct +
+                                      loan_duration_days * fraud_pct)
+        blended_loan_duration_years = blended_loan_duration_days / 365
+
         total_revenue = interest_income + fixed_fee_income + merchant_commission + late_fee_income
         net_profit = total_revenue - funding_cost - expected_loss
 
@@ -296,7 +315,8 @@ def calculate_effective_yield(
         else:
             effective_yield = 1000.0 if net_profit > 0 else -1000.0
 
-        yield_without_delay = (net_profit / principal) / loan_duration_years if loan_duration_years > 0 else 0
+        # Calculate yield without settlement delay using blended loan duration
+        yield_without_delay = (net_profit / principal) / blended_loan_duration_years if blended_loan_duration_years > 0 else 0
         settlement_delay_benefit = effective_yield - yield_without_delay if capital_deployment_years > 0 else 0
 
     else:
@@ -323,6 +343,14 @@ def calculate_effective_yield(
 
         yield_without_delay = (net_profit / principal) / loan_duration_years if loan_duration_years > 0 else 0
         settlement_delay_benefit = effective_yield - yield_without_delay if capital_deployment_years > 0 else 0
+
+    # Calculate APR (interest rate + annualized fixed fee)
+    # APR represents the total annualized cost to the customer
+    if loan_duration_days > 0:
+        annualized_fixed_fee = fixed_fee_pct * (365 / loan_duration_days)
+        customer_apr = apr + annualized_fixed_fee
+    else:
+        customer_apr = apr
 
     return {
         'effective_yield': effective_yield,
@@ -355,7 +383,10 @@ def calculate_effective_yield(
         'has_portfolio_segmentation': has_portfolio_segmentation,
         'fraud_rate': fraud_rate,
         'default_rate': default_rate,
-        'ontime_pct': ontime_pct if has_portfolio_segmentation else 1.0
+        'ontime_pct': ontime_pct if has_portfolio_segmentation else 1.0,
+        'apr': customer_apr,  # APR including interest rate + annualized fixed fee
+        'interest_rate': apr,  # Store the base interest rate separately
+        'portfolio_normalized': portfolio_normalized  # Flag if segments were auto-normalized
     }
 
 

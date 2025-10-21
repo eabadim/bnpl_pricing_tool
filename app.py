@@ -39,7 +39,7 @@ if 'comp_principal_input' not in st.session_state:
     st.session_state.comp_early_inst_input = 3
     st.session_state.comp_late_repay_rate_input = 0.0
     st.session_state.comp_days_late_input = 5
-    st.session_state.comp_apr_input = 250.0  # Matches sidebar default (250% APR)
+    st.session_state.comp_apr_input = 250.0  # Matches sidebar default (250% interest rate)
     st.session_state.comp_fixed_fee_input = 0.0
     st.session_state.comp_late_fee_input = 3.0
     st.session_state.comp_late_pct_input = 20.0
@@ -94,7 +94,7 @@ with st.sidebar.expander("**Payment Behavior**", expanded=False):
         "Early Repayment Rate (%)",
         min_value=0.0,
         max_value=50.0,
-        value=0.0,
+        value=15.0,
         step=1.0,
         help="Percentage of loans repaid early (zero defaults, reduced interest income)"
     ) / 100.0
@@ -115,7 +115,7 @@ with st.sidebar.expander("**Payment Behavior**", expanded=False):
         "Late Repayment Rate (%)",
         min_value=0.0,
         max_value=50.0,
-        value=0.0,
+        value=15.0,
         step=1.0,
         help="Percentage of loans that pay late (zero defaults, extra interest + all late fees)"
     ) / 100.0
@@ -126,19 +126,19 @@ with st.sidebar.expander("**Payment Behavior**", expanded=False):
             "Avg Days Late Per Installment",
             min_value=0,
             max_value=30,
-            value=5,
+            value=20,
             help="Average days late per installment payment"
         )
 
 with st.sidebar.expander("**Pricing**", expanded=False):
     # Interest rate
     interest_apr = st.slider(
-        "Interest Rate (APR %)",
+        "Interest Rate (%)",
         min_value=0.0,
         max_value=500.0,
         value=250.0,
         step=5.0,
-        help="Annual Percentage Rate (set to 0% for interest-free plans)"
+        help="Nominal annual interest rate charged on the principal (set to 0% for interest-free plans)"
     ) / 100.0
 
     # Fixed loan fee
@@ -197,7 +197,7 @@ with st.sidebar.expander("**Business & Risk**", expanded=False):
         "Fraud Rate (%)",
         min_value=0.0,
         max_value=30.0,
-        value=0.0,
+        value=12.0,
         step=0.5,
         help="Customers who never pay (immediate loss)"
     ) / 100.0
@@ -206,7 +206,7 @@ with st.sidebar.expander("**Business & Risk**", expanded=False):
         "Default Rate (%)",
         min_value=0.0,
         max_value=30.0,
-        value=15.0,
+        value=8.0,
         step=0.5,
         help="Legitimate defaults due to financial hardship"
     ) / 100.0
@@ -217,7 +217,7 @@ with st.sidebar.expander("**Business & Risk**", expanded=False):
         "Default Recovery Rate (%)",
         min_value=0.0,
         max_value=100.0,
-        value=10.0,
+        value=0.0,
         step=5.0,
         help="% recovered from legitimate defaults"
     ) / 100.0
@@ -233,12 +233,12 @@ with st.sidebar.expander("**Business & Risk**", expanded=False):
 
     # Funding cost (optional, defaulted to 0)
     funding_cost = st.slider(
-        "Funding Cost (APR %)",
+        "Funding Cost (%)",
         min_value=0.0,
         max_value=20.0,
         value=8.0,
         step=0.5,
-        help="Cost of capital (optional)"
+        help="Annual cost of capital (optional)"
     ) / 100.0
 
 with st.sidebar.expander("**Target Yield**", expanded=False):
@@ -327,115 +327,229 @@ interest_free_cap = estimate_interest_free_cap(
 # Summary metrics - Compact view
 st.header("Key Metrics")
 
-# Add helpful explanations in an info box
-with st.expander("ℹ️ What do these metrics mean?", expanded=False):
-    st.markdown("""
-    **Effective Yield**: The annualized return on capital after accounting for all revenues, costs, defaults, and time value of money. This is your actual portfolio-level profitability. Delta shows difference from target yield.
-
-    **Required APR**: The interest rate needed to achieve your target yield given current parameters. Delta shows how much you'd need to adjust your current APR.
-
-    **Profit Margin**: Net profit as a percentage of principal (Net Profit / Principal). Shows profitability per loan before annualizing.
-
-    **Loan Duration**: Total time from loan origination to final payment in days (installments × frequency).
-
-    **Capital Deploy**: Average days capital is deployed, accounting for when merchant is paid. Lower is better - capital locked up for less time.
-
-    **Settle Benefit**: The yield boost from settlement delay. When you pay the merchant later, you earn extra yield on the float.
-    """)
-
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
 
 with col1:
     st.metric(
         "Effective Yield",
         f"{current_yield_result['effective_yield'] * 100:.1f}%",
         delta=f"{(current_yield_result['effective_yield'] - target_yield) * 100:.1f}%",
-        help="Annualized return on capital after all revenues, costs, and defaults"
+        help="The annualized return on capital after accounting for all revenues, costs, defaults, and time value of money. This is your actual portfolio-level profitability. Delta shows difference from target yield."
     )
 
 with col2:
     st.metric(
-        "Required APR",
-        f"{required_apr * 100:.1f}%",
+        "Interest Rate",
+        f"{interest_apr * 100:.1f}%",
         delta=f"{(required_apr - interest_apr) * 100:.1f}%",
-        help="Interest rate needed to hit target yield with current settings"
+        help="Current nominal interest rate. Delta shows the change needed to hit your target yield (positive = need to increase, negative = can decrease)."
     )
 
 with col3:
     st.metric(
-        "Profit Margin",
-        f"{current_yield_result['profit_margin'] * 100:.1f}%",
-        help="Net profit as % of principal (before annualizing)"
+        "APR",
+        f"{current_yield_result['apr'] * 100:.1f}%",
+        help="Annual Percentage Rate - the total annualized cost to the customer including interest rate plus annualized fixed fees. This is the regulatory/customer-facing rate."
     )
 
 with col4:
     st.metric(
-        "Loan Duration",
-        f"{current_yield_result['loan_duration_days']}d",
-        help="Total time from origination to final payment"
+        "Profit Margin",
+        f"{current_yield_result['profit_margin'] * 100:.1f}%",
+        help="Net profit as a percentage of principal (Net Profit / Principal). Shows profitability per loan before annualizing."
     )
 
 with col5:
     st.metric(
-        "Capital Deploy",
-        f"{current_yield_result['capital_deployment_days']:.0f}d",
-        help="Average days capital is deployed (accounting for settlement)"
+        "Loan Duration",
+        f"{current_yield_result['loan_duration_days']}d",
+        help="Total time from loan origination to final payment in days (installments × frequency)."
     )
 
 with col6:
     st.metric(
-        "Settle Benefit",
-        f"+{current_yield_result['settlement_delay_benefit'] * 100:.1f}%",
-        help="Yield boost from settlement delay float"
+        "Capital Deploy",
+        f"{current_yield_result['capital_deployment_days']:.0f}d",
+        help="Average days capital is deployed, accounting for when merchant is paid. Lower is better - capital locked up for less time."
     )
 
-# First installment upfront info - compact
-if first_installment_upfront:
-    installment_amt = current_yield_result['installment_amount']
-    capital_deployed = current_yield_result['capital_to_deploy']
-    loan_days = current_yield_result['loan_duration_days']
-    msg = f"First installment collected upfront ({installment_amt:.2f} USD) — Capital at risk: {capital_deployed:.2f} USD over {loan_days} days"
-    st.info(msg, icon="💰")
+with col7:
+    st.metric(
+        "Settle Benefit",
+        f"+{current_yield_result['settlement_delay_benefit'] * 100:.1f}%",
+        help="The yield boost from settlement delay. When you pay the merchant later, you earn extra yield on the float."
+    )
 
-# Early repayment info - compact
-if current_yield_result['has_early_repayment']:
-    early_pct = current_yield_result['early_repayment_rate'] * 100
-    early_inst = current_yield_result['avg_repayment_installment']
-    msg = f"Portfolio blending enabled: {early_pct:.0f}% of loans repay early at installment {early_inst} (zero defaults, reduced interest income)"
-    st.info(msg, icon="⚡")
+# Portfolio normalization warning
+if current_yield_result.get('portfolio_normalized', False):
+    original_total = (early_repayment_rate + late_repayment_rate + default_rate + fraud_rate) * 100
+    st.warning(
+        f"⚠️ **Portfolio segments exceeded 100%** (total: {original_total:.1f}%). "
+        f"Percentages have been automatically normalized to sum to 100%. "
+        f"Adjusted values: Early {current_yield_result['early_repayment_rate']*100:.1f}%, "
+        f"Late {current_yield_result['late_repayment_rate']*100:.1f}%, "
+        f"Default {current_yield_result['default_rate']*100:.1f}%, "
+        f"Fraud {current_yield_result['fraud_rate']*100:.1f}%",
+        icon="⚠️"
+    )
 
-# Late repayment info - compact
-if current_yield_result['has_late_repayment']:
-    late_pct = current_yield_result['late_repayment_rate'] * 100
-    days_late = current_yield_result['avg_days_late_per_installment']
-    total_delay = avg_installments * days_late
-    msg = f"Late repayment enabled: {late_pct:.0f}% of loans pay {days_late}d late per installment (+{total_delay}d total, zero defaults, increased interest + all late fees)"
-    st.info(msg, icon="🕐")
-
-# Portfolio breakdown - show when multiple segments active
-if current_yield_result['has_portfolio_segmentation']:
+# Portfolio Breakdown Section
+with st.expander("📊 Portfolio Breakdown", expanded=False):
+    # Calculate portfolio percentages
     early_pct = current_yield_result['early_repayment_rate'] * 100
     late_pct = current_yield_result['late_repayment_rate'] * 100
     default_pct = current_yield_result['default_rate'] * 100
     fraud_pct = current_yield_result['fraud_rate'] * 100
     ontime_pct = current_yield_result['ontime_pct'] * 100
 
-    segments = []
-    if early_pct > 0:
-        segments.append(f"{early_pct:.0f}% early")
-    if late_pct > 0:
-        segments.append(f"{late_pct:.0f}% late")
-    if ontime_pct > 0:
-        segments.append(f"{ontime_pct:.0f}% on-time")
-    if default_pct > 0:
-        segments.append(f"{default_pct:.0f}% default")
-    if fraud_pct > 0:
-        segments.append(f"{fraud_pct:.0f}% fraud")
+    # Two-column layout
+    left_col, right_col = st.columns([1, 1])
 
-    msg = f"Five-way portfolio: {' | '.join(segments)}"
-    st.info(msg, icon="📊")
+    with left_col:
+        st.markdown("### Customer Cohorts")
 
-# Float scenario warning - compact
+        # Early Repayers
+        with st.expander(f"⚡ Early Repayers ({early_pct:.1f}%)", expanded=False):
+            st.markdown("""
+            **What**: Customers who repay their loan before the scheduled final installment.
+
+            **Behavior**:
+            - Repay at installment {avg_inst} on average (out of {total_inst} total)
+            - Zero defaults in this segment
+            - Shorter loan duration than expected
+
+            **Revenue Impact**:
+            - ✅ Fixed fees collected in full (upfront)
+            - ✅ Merchant commission collected in full
+            - ⚠️ Reduced interest income (shorter duration)
+            - ✅ Capital freed up faster for redeployment
+
+            **Key Characteristic**: Low-risk segment with reduced interest revenue but excellent credit quality.
+            """.format(
+                avg_inst=avg_repayment_installment if avg_repayment_installment else "N/A",
+                total_inst=avg_installments
+            ))
+
+        # Late Repayers
+        with st.expander(f"🕐 Late Repayers ({late_pct:.1f}%)", expanded=False):
+            st.markdown("""
+            **What**: Customers who consistently pay late on every installment but eventually pay in full.
+
+            **Behavior**:
+            - Pay {days_late}d late per installment on average
+            - Total delay: +{total_delay}d across all installments
+            - Zero defaults in this segment
+            - Extended loan duration
+
+            **Revenue Impact**:
+            - ✅ Fixed fees collected in full
+            - ✅ Merchant commission collected in full
+            - ✅ Increased interest income (extended duration)
+            - ✅ ALL installments incur late fees (guaranteed late fee revenue)
+            - ⚠️ Capital locked up longer
+
+            **Key Characteristic**: Higher revenue segment due to extended interest accrual and guaranteed late fees, but slower capital turnover.
+            """.format(
+                days_late=avg_days_late_per_installment,
+                total_delay=avg_installments * avg_days_late_per_installment
+            ))
+
+        # On-Time Payers
+        with st.expander(f"✅ On-Time Payers ({ontime_pct:.1f}%)", expanded=False):
+            st.markdown("""
+            **What**: Customers who follow the payment schedule as planned.
+
+            **Behavior**:
+            - Pay on scheduled due dates
+            - Zero defaults in this segment
+            - Standard loan duration
+            - Occasional late payments ({late_pct:.0f}% of installments)
+
+            **Revenue Impact**:
+            - ✅ Fixed fees collected in full
+            - ✅ Merchant commission collected in full
+            - ✅ Standard interest income (normal duration)
+            - ✅ Sporadic late fee revenue
+            - ✅ Predictable capital deployment
+
+            **Key Characteristic**: Core revenue segment with predictable cash flows and zero credit losses.
+            """.format(
+                late_pct=late_installment_pct * 100
+            ))
+
+        # Defaults
+        with st.expander(f"⚠️ Defaults ({default_pct:.1f}%)", expanded=False):
+            st.markdown("""
+            **What**: Legitimate customers who default due to financial hardship (job loss, medical emergency, etc.).
+
+            **Behavior**:
+            - Intend to pay but cannot due to circumstances
+            - May have made partial payments before defaulting
+            - Some recovery possible through collections
+
+            **Revenue Impact**:
+            - ⚠️ Partial interest income (up to default point)
+            - ⚠️ Partial fixed fees
+            - ✅ Merchant commission collected (full principal disbursed)
+            - ⚠️ Sporadic late fees before default
+            - ❌ Expected loss: {loss_pct:.1f}% of principal (after {recovery_pct:.0f}% recovery)
+
+            **Key Characteristic**: Credit risk with partial recovery potential. Different from fraud - legitimate financial distress.
+            """.format(
+                loss_pct=(1 - recovery_rate) * 100,
+                recovery_pct=recovery_rate * 100
+            ))
+
+        # Fraud
+        with st.expander(f"🚨 Fraud ({fraud_pct:.1f}%)", expanded=False):
+            st.markdown("""
+            **What**: Bad actors who never intend to pay - identity theft, synthetic fraud, or deliberate non-payment.
+
+            **Behavior**:
+            - Zero payments made (immediate loss)
+            - Never intend to repay
+            - Minimal recovery through collections
+
+            **Revenue Impact**:
+            - ❌ Zero interest income
+            - ❌ Zero fixed fees
+            - ✅ Merchant commission collected (full principal disbursed)
+            - ❌ Zero late fees
+            - ❌ Expected loss: {loss_pct:.1f}% of principal (after {recovery_pct:.0f}% fraud recovery)
+
+            **Key Characteristic**: Highest risk segment. Must be minimized through fraud detection, identity verification, and screening.
+            """.format(
+                loss_pct=(1 - fraud_recovery_rate) * 100,
+                recovery_pct=fraud_recovery_rate * 100
+            ))
+
+    with right_col:
+        st.markdown("### Portfolio Distribution")
+
+        # Create pie chart
+        labels = ['Early Repayers', 'Late Repayers', 'On-Time Payers', 'Defaults', 'Fraud']
+        values = [early_pct, late_pct, ontime_pct, default_pct, fraud_pct]
+        colors = ['#9b59b6', '#FED740', '#2ecc71', '#f39c12', '#e74c3c']
+
+        fig_pie = go.Figure(data=[go.Pie(
+            labels=labels,
+            values=values,
+            hole=0.3,
+            marker=dict(colors=colors),
+            textinfo='label+percent',
+            textposition='auto',
+            hovertemplate='<b>%{label}</b><br>%{value:.1f}%<br>(%{percent})<extra></extra>'
+        )])
+
+        fig_pie.update_layout(
+            showlegend=False,
+            height=400,
+            margin=dict(t=20, b=20, l=20, r=20)
+        )
+
+        st.plotly_chart(fig_pie, config={'displayModeBar': False}, use_container_width=True)
+
+# Float scenario warning - critical alert
 if current_yield_result['is_float_scenario']:
     st.warning(
         f"⚠️ **FLOAT SCENARIO**: Settlement ({settlement_delay}d) ≥ Loan ({current_yield_result['loan_duration_days']}d) — "
@@ -445,6 +559,17 @@ if current_yield_result['is_float_scenario']:
 
 # Revenue breakdown - in expander to save space
 with st.expander("💰 Revenue & Cost Breakdown", expanded=False):
+    # Calculate surrendered early repayment interest
+    surrendered_early_interest = 0.0
+    if current_yield_result['has_early_repayment']:
+        # What early repayers would have paid if they stayed full term
+        full_term_interest_early = avg_principal * interest_apr * (avg_installments * installment_frequency_days / 365) * 0.5 * early_repayment_rate
+        # What they actually paid (shorter duration)
+        early_duration_years = (avg_repayment_installment * installment_frequency_days / 365) if avg_repayment_installment else 0
+        actual_interest_early = avg_principal * interest_apr * early_duration_years * 0.5 * early_repayment_rate
+        # Surrendered = foregone interest
+        surrendered_early_interest = full_term_interest_early - actual_interest_early
+
     # Build waterfall chart dynamically, excluding zero values
     waterfall_x = []
     waterfall_y = []
@@ -509,8 +634,25 @@ with st.expander("💰 Revenue & Cost Breakdown", expanded=False):
         totals={"marker": {"color": "#3498db"}}  # Blue for totals
     ))
 
+    # Add Surrendered Early Repayment Interest as a separate grey bar (if applicable)
+    if surrendered_early_interest > 0:
+        waterfall_fig.add_trace(go.Bar(
+            x=["Surrendered<br>Early Interest"],
+            y=[surrendered_early_interest],
+            marker=dict(color="#95a5a6"),  # Grey
+            text=[f"${surrendered_early_interest:.2f}"],
+            textposition="outside",
+            name="Surrendered Interest",
+            showlegend=False,
+            base=[current_yield_result['net_profit']],  # Start from Net Profit
+            hovertemplate='<b>%{x}</b><br>$%{y:.2f}<extra></extra>'
+        ))
+
     # Calculate y-axis range - extend above total revenue for better label visibility
     max_value = current_yield_result['total_revenue']
+    if surrendered_early_interest > 0:
+        # If surrendered interest bar exists, it goes UP from Net Profit
+        max_value = max(max_value, current_yield_result['net_profit'] + surrendered_early_interest)
     min_value = current_yield_result['net_profit']
     y_top_padding = max_value * 0.25  # 25% padding at top only
 
@@ -526,7 +668,8 @@ with st.expander("💰 Revenue & Cost Breakdown", expanded=False):
         xaxis_title="",
         yaxis_title="Amount ($)",
         yaxis_range=[y_axis_min, y_axis_max],
-        hovermode='x'
+        hovermode='x',
+        barmode='overlay'  # Allow grey bar to overlay at its position
     )
 
     st.plotly_chart(waterfall_fig, config={'displayModeBar': False})
@@ -712,7 +855,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         height=300
     )
 
-    # Chart 4: Yield vs Settlement Delay (NEW - shows settlement delay impact)
+    # Chart 4: Effective Yield vs Settlement Delay (NEW - shows settlement delay impact)
     settlement_delay_range = np.arange(0, 61, 5)  # 0 to 60 days
     yields_by_settlement = []
 
@@ -744,7 +887,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         annotation_text="Current Delay"
     )
     fig4.update_layout(
-        title="Yield vs Settlement Delay",
+        title="Effective Yield vs Settlement Delay",
         xaxis_title="Settlement Delay (days)",
         yaxis_title="Effective Yield (%)",
         yaxis_range=[-25, 150],
@@ -752,7 +895,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         height=300
     )
 
-    # Chart 5: Yield vs APR
+    # Chart 5: Yield vs Interest Rate
     apr_range = np.linspace(0, 5.0, 30)  # 0% to 500%
     yields_by_apr = []
 
@@ -780,11 +923,11 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         x=interest_apr * 100,
         line_dash="dot",
         line_color="gray",
-        annotation_text="Current APR"
+        annotation_text="Current Rate"
     )
     fig5.update_layout(
-        title="Effective Yield vs APR",
-        xaxis_title="APR (%)",
+        title="Effective Yield vs Interest Rate",
+        xaxis_title="Interest Rate (%)",
         yaxis_title="Effective Yield (%)",
         yaxis_range=[-25, 150],
         hovermode='x unified',
@@ -920,7 +1063,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
     )
     fig9.update_layout(
         title="Effective Yield vs Funding Cost",
-        xaxis_title="Funding Cost APR (%)",
+        xaxis_title="Funding Cost (%)",
         yaxis_title="Effective Yield (%)",
         yaxis_range=[-25, 150],
         hovermode='x unified',
@@ -947,7 +1090,7 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
     col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(fig5, config={'displayModeBar': False})
-        st.caption("💰 **APR Impact**: Interest rate is the most direct yield driver. Linear relationship - each percentage point increase in APR translates to higher effective yield. Set to 0% for interest-free plans.")
+        st.caption("💰 **Interest Rate Impact**: Interest rate is the most direct yield driver. Linear relationship - each percentage point increase in interest rate translates to higher effective yield. Set to 0% for interest-free plans.")
     with col2:
         st.plotly_chart(fig6, config={'displayModeBar': False})
         st.caption("🛡️ **Fixed Fee Impact**: Fixed fees boost yield and protect against early repayment risk. Unlike interest, they're earned upfront regardless of loan duration.")
@@ -1189,7 +1332,7 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
         with col2:
             st.markdown("**Pricing**")
             comp_apr = st.slider(
-                "APR (%)",
+                "Interest Rate (%)",
                 min_value=0.0,
                 max_value=500.0,
                 step=5.0,
@@ -1267,7 +1410,7 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
 
             st.markdown("**Costs**")
             comp_funding = st.slider(
-                "Funding Cost APR (%)",
+                "Funding Cost (%)",
                 min_value=0.0,
                 max_value=20.0,
                 step=0.5,
@@ -1301,6 +1444,19 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
 
     st.markdown("---")
     st.header("Comparison Results")
+
+    # Portfolio normalization warning for Scenario B
+    if comparison_result.get('portfolio_normalized', False):
+        original_total = (comp_early_rate + comp_late_repay_rate + comp_default + comp_fraud_rate)
+        st.warning(
+            f"⚠️ **Scenario B portfolio segments exceeded 100%** (total: {original_total:.1f}%). "
+            f"Percentages have been automatically normalized to sum to 100%. "
+            f"Adjusted values: Early {comparison_result['early_repayment_rate']*100:.1f}%, "
+            f"Late {comparison_result['late_repayment_rate']*100:.1f}%, "
+            f"Default {comparison_result['default_rate']*100:.1f}%, "
+            f"Fraud {comparison_result['fraud_rate']*100:.1f}%",
+            icon="⚠️"
+        )
 
     # Key Metrics Comparison
     st.subheader("Key Metrics")
@@ -1361,7 +1517,7 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
     wf_col1, wf_col2 = st.columns(2)
 
     # Helper function to create waterfall chart
-    def create_waterfall(result, title):
+    def create_waterfall(result, title, surrendered_interest=0.0):
         waterfall_x = []
         waterfall_y = []
         waterfall_text = []
@@ -1415,12 +1571,29 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
             text=waterfall_text,
             textposition="outside",
             connector={"line": {"color": "rgb(63, 63, 63)"}},
-            increasing={"marker": {"color": "#2ecc71"}},
-            decreasing={"marker": {"color": "#e74c3c"}},
-            totals={"marker": {"color": "#3498db"}}
+            increasing={"marker": {"color": "#2ecc71"}},  # Green for revenue
+            decreasing={"marker": {"color": "#e74c3c"}},  # Red for costs
+            totals={"marker": {"color": "#3498db"}}  # Blue for totals
         ))
 
+        # Add Surrendered Early Repayment Interest as a separate grey bar (if applicable)
+        if surrendered_interest > 0:
+            fig.add_trace(go.Bar(
+                x=["Surrendered<br>Early Interest"],
+                y=[surrendered_interest],
+                marker=dict(color="#95a5a6"),  # Grey
+                text=[f"${surrendered_interest:.2f}"],
+                textposition="outside",
+                name="Surrendered Interest",
+                showlegend=False,
+                base=[result['net_profit']],  # Start from Net Profit
+                hovertemplate='<b>%{x}</b><br>$%{y:.2f}<extra></extra>'
+            ))
+
         max_value = result['total_revenue']
+        if surrendered_interest > 0:
+            # If surrendered interest bar exists, it goes UP from Net Profit
+            max_value = max(max_value, result['net_profit'] + surrendered_interest)
         min_value = result['net_profit']
         y_top_padding = max_value * 0.25
         y_axis_min = min(0, min_value)
@@ -1434,17 +1607,35 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
             xaxis_title="",
             yaxis_title="Amount ($)",
             yaxis_range=[y_axis_min, y_axis_max],
-            hovermode='x'
+            hovermode='x',
+            barmode='overlay'  # Allow grey bar to overlay at its position
         )
 
         return fig
 
+    # Calculate surrendered early interest for Scenario A
+    surrendered_a = 0.0
+    if current_yield_result['has_early_repayment']:
+        full_term_interest_a = avg_principal * interest_apr * (avg_installments * installment_frequency_days / 365) * 0.5 * early_repayment_rate
+        early_duration_years_a = (avg_repayment_installment * installment_frequency_days / 365) if avg_repayment_installment else 0
+        actual_interest_a = avg_principal * interest_apr * early_duration_years_a * 0.5 * early_repayment_rate
+        surrendered_a = full_term_interest_a - actual_interest_a
+
+    # Calculate surrendered early interest for Scenario B
+    surrendered_b = 0.0
+    if comparison_result['has_early_repayment']:
+        comp_early_rate_decimal = comp_early_rate / 100 if comp_early_rate > 0 else 0
+        full_term_interest_b = comp_principal * (comp_apr / 100) * (comp_installments * comp_frequency_days / 365) * 0.5 * comp_early_rate_decimal
+        early_duration_years_b = (comp_early_inst * comp_frequency_days / 365) if comp_early_inst else 0
+        actual_interest_b = comp_principal * (comp_apr / 100) * early_duration_years_b * 0.5 * comp_early_rate_decimal
+        surrendered_b = full_term_interest_b - actual_interest_b
+
     with wf_col1:
-        fig_a = create_waterfall(current_yield_result, "Scenario A (Current)")
+        fig_a = create_waterfall(current_yield_result, "Scenario A (Current)", surrendered_a)
         st.plotly_chart(fig_a, config={'displayModeBar': False})
 
     with wf_col2:
-        fig_b = create_waterfall(comparison_result, "Scenario B (Comparison)")
+        fig_b = create_waterfall(comparison_result, "Scenario B (Comparison)", surrendered_b)
         st.plotly_chart(fig_b, config={'displayModeBar': False})
 
     st.markdown("---")
@@ -1516,6 +1707,422 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
         st.warning(f"⚠️ **Scenario A performs better** with an effective yield of {current_yield_result['effective_yield'] * 100:.1f}% vs {comparison_result['effective_yield'] * 100:.1f}% (Scenario B). Scenario B yields **{yield_delta * 100:.1f} percentage points** less.")
     else:
         st.info("ℹ️ **Both scenarios perform equally** with the same effective yield.")
+
+# Cash Flow Projection
+with st.expander("💰 Cash Flow Projection", expanded=False):
+    st.markdown("""
+    Project your portfolio's cash flows over time based on current loan parameters.
+    This models new loan originations, customer repayments, and funding requirements month by month.
+    """)
+
+    # Input controls
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        starting_portfolio = st.number_input(
+            "Starting Portfolio Size ($)",
+            min_value=10000.0,
+            max_value=1000000000.0,
+            value=1000000.0,
+            step=100000.0,
+            help="Initial portfolio principal outstanding"
+        )
+
+    with col2:
+        projection_months = st.slider(
+            "Projection Period (months)",
+            min_value=1,
+            max_value=24,
+            value=12,
+            help="Number of months to project"
+        )
+
+    with col3:
+        monthly_growth = st.slider(
+            "Monthly Growth Rate (%)",
+            min_value=0.0,
+            max_value=50.0,
+            value=10.0,
+            step=1.0,
+            help="Target monthly growth in portfolio principal"
+        ) / 100.0
+
+    with col4:
+        monthly_overhead = st.number_input(
+            "Monthly Overhead ($)",
+            min_value=0.0,
+            max_value=10000000.0,
+            value=200000.0,
+            step=10000.0,
+            help="Fixed monthly operating costs (salaries, rent, etc.)"
+        )
+
+    # Calculate cash flow projection
+    def calculate_cash_flow_projection(starting_portfolio, months, growth_rate, loan_params, overhead):
+        """
+        Calculate month-by-month cash flow projections.
+
+        Args:
+            starting_portfolio: Initial portfolio size ($)
+            months: Number of months to project
+            growth_rate: Monthly growth rate (as decimal)
+            loan_params: Dictionary of current loan parameters
+            overhead: Monthly overhead cost ($)
+
+        Returns:
+            DataFrame with monthly cash flow breakdown
+        """
+        # Extract loan parameters
+        principal = loan_params['principal']
+        installments = loan_params['installments']
+        frequency_days = loan_params['frequency_days']
+        apr = loan_params['apr']
+        merchant_commission = loan_params['merchant_commission']
+        fixed_fee = loan_params['fixed_fee']
+        late_fee_amount = loan_params['late_fee_amount']
+        late_installment_pct = loan_params['late_installment_pct']
+
+        # Convert installment frequency to months
+        payments_per_month = 30 / frequency_days
+        loan_duration_months = installments / payments_per_month
+
+        # Calculate per-loan cash flows
+        total_interest = principal * apr * (loan_duration_months / 12) * 0.5
+        total_fixed_fees = principal * fixed_fee
+        total_late_fees = installments * late_installment_pct * late_fee_amount
+        merchant_comm_per_loan = principal * merchant_commission
+
+        # Monthly payment per loan (principal + interest)
+        monthly_payment_per_loan = (principal + total_interest) / loan_duration_months
+        monthly_fees_per_loan = (total_fixed_fees + total_late_fees) / loan_duration_months
+
+        # Initialize tracking
+        results = []
+        portfolio_balance = starting_portfolio
+        loan_cohorts = []  # List of (origination_month, principal, months_remaining)
+
+        for month in range(months + 1):
+            # Calculate new loans to originate this month
+            if month == 0:
+                # Initial portfolio - assume exists at start
+                new_loans_principal = starting_portfolio
+                loan_cohorts.append({
+                    'month': 0,
+                    'principal': starting_portfolio,
+                    'months_remaining': loan_duration_months
+                })
+            else:
+                # Target portfolio at end of month
+                target_portfolio = starting_portfolio * ((1 + growth_rate) ** month)
+                # New loans needed to achieve growth
+                new_loans_principal = target_portfolio - portfolio_balance
+                if new_loans_principal > 0:
+                    loan_cohorts.append({
+                        'month': month,
+                        'principal': new_loans_principal,
+                        'months_remaining': loan_duration_months
+                    })
+
+            # Calculate cash flows for this month
+            principal_repayments = 0
+            interest_collected = 0
+            fees_collected = 0
+
+            # Process each active cohort
+            for cohort in loan_cohorts:
+                if cohort['months_remaining'] > 0:
+                    # Calculate proportion of this cohort's payments
+                    cohort_loans = cohort['principal'] / principal
+
+                    # Monthly repayments from this cohort
+                    principal_repayments += (principal / loan_duration_months) * cohort_loans
+                    interest_collected += (total_interest / loan_duration_months) * cohort_loans
+                    fees_collected += monthly_fees_per_loan * cohort_loans
+
+                    # Decrement remaining months
+                    cohort['months_remaining'] -= 1
+
+            # Merchant commission on new loans
+            merchant_comm_collected = (new_loans_principal / principal) * merchant_comm_per_loan if month > 0 else 0
+
+            # Cash outflows
+            merchant_payments = new_loans_principal if month > 0 else 0
+            overhead_cost = overhead if month > 0 else 0  # No overhead in month 0 (starting point)
+
+            # Total cash flows
+            total_inflows = merchant_comm_collected + principal_repayments + interest_collected + fees_collected
+            total_outflows = merchant_payments + overhead_cost
+            net_funding = total_outflows - total_inflows
+
+            # Update portfolio balance
+            portfolio_balance = sum(c['principal'] * (c['months_remaining'] / loan_duration_months) for c in loan_cohorts if c['months_remaining'] > 0)
+
+            results.append({
+                'month': month,
+                'portfolio_balance': portfolio_balance,
+                'merchant_commission': merchant_comm_collected,
+                'principal_repayments': principal_repayments,
+                'interest_collected': interest_collected,
+                'fees_collected': fees_collected,
+                'total_inflows': total_inflows,
+                'merchant_payments': merchant_payments,
+                'overhead': overhead_cost,
+                'total_outflows': total_outflows,
+                'net_funding_need': net_funding
+            })
+
+        return pd.DataFrame(results)
+
+    # Prepare loan parameters
+    loan_params = {
+        'principal': avg_principal,
+        'installments': avg_installments,
+        'frequency_days': installment_frequency_days,
+        'apr': interest_apr,
+        'merchant_commission': merchant_commission,
+        'fixed_fee': fixed_fee_pct,
+        'late_fee_amount': late_fee_amount,
+        'late_installment_pct': late_installment_pct
+    }
+
+    # Calculate projection
+    cf_projection = calculate_cash_flow_projection(
+        starting_portfolio,
+        projection_months,
+        monthly_growth,
+        loan_params,
+        monthly_overhead
+    )
+
+    # Calculate summary metrics
+    final_portfolio = cf_projection.iloc[-1]['portfolio_balance']
+    starting_portfolio_balance = cf_projection.iloc[0]['portfolio_balance']
+    total_growth = final_portfolio - starting_portfolio_balance
+    total_growth_pct = (total_growth / starting_portfolio_balance * 100) if starting_portfolio_balance > 0 else 0
+
+    peak_funding_need = cf_projection[cf_projection['net_funding_need'] > 0]['net_funding_need'].max() if (cf_projection['net_funding_need'] > 0).any() else 0
+    total_funding_required = cf_projection[cf_projection['net_funding_need'] > 0]['net_funding_need'].sum() if (cf_projection['net_funding_need'] > 0).any() else 0
+    cumulative_net_funding = cf_projection['net_funding_need'].sum()
+
+    # Total revenue = interest + fees + commissions (excluding principal repayments)
+    total_revenue_collected = (cf_projection['interest_collected'].sum() +
+                              cf_projection['fees_collected'].sum() +
+                              cf_projection['merchant_commission'].sum())
+    total_overhead_paid = cf_projection['overhead'].sum()
+
+    # Display summary metrics
+    st.markdown("### Summary Metrics")
+
+    row1_col1, row1_col2, row1_col3 = st.columns(3)
+    with row1_col1:
+        st.metric(
+            "Final Portfolio Balance",
+            f"${final_portfolio:,.0f}",
+            delta=f"${total_growth:,.0f} ({total_growth_pct:+.1f}%)",
+            help="Ending portfolio balance with total growth over projection period"
+        )
+    with row1_col2:
+        st.metric(
+            "Peak Monthly Funding Need",
+            f"${peak_funding_need:,.0f}",
+            help="Maximum funding required in any single month"
+        )
+    with row1_col3:
+        st.metric(
+            "Total Funding Required",
+            f"${total_funding_required:,.0f}",
+            help="Sum of all positive net funding needs (capital required for growth)"
+        )
+
+    row2_col1, row2_col2, row2_col3 = st.columns(3)
+    with row2_col1:
+        st.metric(
+            "Cumulative Net Funding",
+            f"${cumulative_net_funding:,.0f}",
+            help="Total net funding over entire period (positive = capital deployed)"
+        )
+    with row2_col2:
+        st.metric(
+            "Total Revenue Collected",
+            f"${total_revenue_collected:,.0f}",
+            help="Total interest, fees, and commissions collected (excludes principal)"
+        )
+    with row2_col3:
+        st.metric(
+            "Total Overhead Paid",
+            f"${total_overhead_paid:,.0f}",
+            help="Total operating costs over projection period"
+        )
+
+    st.markdown("---")
+
+    # Create both charts side-by-side
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        # Portfolio balance bar chart with data labels
+        fig_portfolio = go.Figure()
+
+        fig_portfolio.add_trace(go.Bar(
+            x=cf_projection['month'],
+            y=cf_projection['portfolio_balance'],
+            marker=dict(color='#3498db'),
+            text=[f'${val:,.0f}' for val in cf_projection['portfolio_balance']],
+            textposition='outside',
+            customdata=cf_projection[[
+                'merchant_commission', 'principal_repayments', 'interest_collected',
+                'fees_collected', 'total_inflows', 'merchant_payments', 'overhead',
+                'total_outflows', 'net_funding_need'
+            ]],
+            hovertemplate='<b>Month %{x}</b><br>' +
+                          'Portfolio Balance: $%{y:,.0f}<br>' +
+                          '<br><b>Inflows:</b><br>' +
+                          '  • Merchant Commission: $%{customdata[0]:,.0f}<br>' +
+                          '  • Principal Repayments: $%{customdata[1]:,.0f}<br>' +
+                          '  • Interest: $%{customdata[2]:,.0f}<br>' +
+                          '  • Fees: $%{customdata[3]:,.0f}<br>' +
+                          '  <b>Total Inflows: $%{customdata[4]:,.0f}</b><br>' +
+                          '<br><b>Outflows:</b><br>' +
+                          '  • Merchant Payments: $%{customdata[5]:,.0f}<br>' +
+                          '  • Company Overhead: $%{customdata[6]:,.0f}<br>' +
+                          '  <b>Total Outflows: $%{customdata[7]:,.0f}</b><br>' +
+                          '<br><b>Net Funding Need: $%{customdata[8]:,.0f}</b>' +
+                          '<extra></extra>',
+            name='Portfolio Balance'
+        ))
+
+        fig_portfolio.update_layout(
+            title="Outstanding Portfolio Balance",
+            xaxis_title="Month",
+            yaxis_title="Portfolio Balance ($)",
+            height=500,
+            hovermode='closest'
+        )
+
+        st.plotly_chart(fig_portfolio, config={'displayModeBar': False}, use_container_width=True)
+
+    with chart_col2:
+        # Create stacked bar chart for cash flows
+        fig_cashflow = go.Figure()
+
+        # Prepare custom hover data for all components
+        customdata = cf_projection[[
+            'merchant_commission', 'principal_repayments', 'interest_collected',
+            'fees_collected', 'total_inflows', 'merchant_payments', 'overhead',
+            'total_outflows', 'net_funding_need'
+        ]]
+
+        # Inflows - stacked positive bars (different shades of green)
+        # Only first trace shows detailed tooltip to avoid repetition
+        fig_cashflow.add_trace(go.Bar(
+            name='Merchant Commission',
+            x=cf_projection['month'],
+            y=cf_projection['merchant_commission'],
+            marker_color='#27ae60',
+            customdata=customdata,
+            hovertemplate='<b>Month %{x}</b><br><br>' +
+                          '<b>Inflows:</b><br>' +
+                          '  • Merchant Commission: $%{customdata[0]:,.0f}<br>' +
+                          '  • Principal Repayments: $%{customdata[1]:,.0f}<br>' +
+                          '  • Interest: $%{customdata[2]:,.0f}<br>' +
+                          '  • Fees: $%{customdata[3]:,.0f}<br>' +
+                          '  <b>Total Inflows: $%{customdata[4]:,.0f}</b><br><br>' +
+                          '<b>Outflows:</b><br>' +
+                          '  • Merchant Payments: $%{customdata[5]:,.0f}<br>' +
+                          '  • Overhead: $%{customdata[6]:,.0f}<br>' +
+                          '  <b>Total Outflows: $%{customdata[7]:,.0f}</b><br><br>' +
+                          '<b>Net Cash Flow: $%{customdata[8]:,.0f}</b>' +
+                          '<extra></extra>',
+            showlegend=False
+        ))
+
+        fig_cashflow.add_trace(go.Bar(
+            name='Principal Repayments',
+            x=cf_projection['month'],
+            y=cf_projection['principal_repayments'],
+            marker_color='#2ecc71',
+            hoverinfo='skip',
+            showlegend=False
+        ))
+
+        fig_cashflow.add_trace(go.Bar(
+            name='Interest Collected',
+            x=cf_projection['month'],
+            y=cf_projection['interest_collected'],
+            marker_color='#58d68d',
+            hoverinfo='skip',
+            showlegend=False
+        ))
+
+        fig_cashflow.add_trace(go.Bar(
+            name='Fees Collected',
+            x=cf_projection['month'],
+            y=cf_projection['fees_collected'],
+            marker_color='#82e0aa',
+            hoverinfo='skip',
+            showlegend=False
+        ))
+
+        # Outflows - stacked negative bars (different shades of red)
+        fig_cashflow.add_trace(go.Bar(
+            name='Merchant Payments',
+            x=cf_projection['month'],
+            y=-cf_projection['merchant_payments'],
+            marker_color='#c0392b',
+            hoverinfo='skip',
+            showlegend=False
+        ))
+
+        fig_cashflow.add_trace(go.Bar(
+            name='Company Overhead',
+            x=cf_projection['month'],
+            y=-cf_projection['overhead'],
+            marker_color='#e74c3c',
+            hoverinfo='skip',
+            showlegend=False
+        ))
+
+        fig_cashflow.update_layout(
+            title="Monthly Cash Flows",
+            xaxis_title="Month",
+            yaxis_title="Cash Flows ($)",
+            barmode='relative',
+            height=500,
+            hovermode='x unified',
+            showlegend=False
+        )
+
+        st.plotly_chart(fig_cashflow, config={'displayModeBar': False}, use_container_width=True)
+
+    # Create detailed table
+    st.markdown("### Monthly Cash Flow Details")
+
+    table_df = cf_projection[['month', 'merchant_commission', 'principal_repayments',
+                               'interest_collected', 'fees_collected', 'total_inflows',
+                               'merchant_payments', 'overhead', 'total_outflows',
+                               'net_funding_need', 'portfolio_balance']].copy()
+
+    # Rename columns for display
+    table_df.columns = ['Month', 'Merchant Commission', 'Principal Repayments',
+                        'Interest Collected', 'Fees Collected', 'Total Inflows',
+                        'Merchant Payments', 'Company Overhead', 'Total Outflows',
+                        'Net Funding Need', 'Portfolio Balance']
+
+    # Format currency columns
+    currency_cols = ['Merchant Commission', 'Principal Repayments', 'Interest Collected',
+                     'Fees Collected', 'Total Inflows', 'Merchant Payments', 'Company Overhead',
+                     'Total Outflows', 'Net Funding Need', 'Portfolio Balance']
+
+    for col in currency_cols:
+        table_df[col] = table_df[col].apply(lambda x: f'${x:,.0f}')
+
+    # Display table
+    st.dataframe(
+        table_df,
+        hide_index=True,
+        use_container_width=True,
+        height=400
+    )
 
 # Footer
 st.caption("BNPL Pricing Strategy Simulator v1.4 | Built with Streamlit")
