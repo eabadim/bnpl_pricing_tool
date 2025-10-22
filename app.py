@@ -1781,20 +1781,64 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
         fixed_fee = loan_params['fixed_fee']
         late_fee_amount = loan_params['late_fee_amount']
         late_installment_pct = loan_params['late_installment_pct']
+        early_repayment_rate = loan_params['early_repayment_rate']
+        avg_repayment_installment = loan_params['avg_repayment_installment']
+        late_repayment_rate = loan_params['late_repayment_rate']
+        avg_days_late_per_installment = loan_params['avg_days_late_per_installment']
 
         # Convert installment frequency to months
         payments_per_month = 30 / frequency_days
         loan_duration_months = installments / payments_per_month
 
-        # Calculate per-loan cash flows
-        total_interest = principal * apr * (loan_duration_months / 12) * 0.5
+        # Calculate blended loan duration accounting for early/late repayments
+        ontime_rate = 1.0 - early_repayment_rate - late_repayment_rate
+
+        # Early repayers
+        if early_repayment_rate > 0 and avg_repayment_installment:
+            early_duration_months = avg_repayment_installment / payments_per_month
+        else:
+            early_duration_months = loan_duration_months
+
+        # Late repayers
+        if late_repayment_rate > 0 and avg_days_late_per_installment > 0:
+            total_days_late = installments * avg_days_late_per_installment
+            late_duration_months = loan_duration_months + (total_days_late / 30)
+        else:
+            late_duration_months = loan_duration_months
+
+        # Blended loan duration
+        blended_duration_months = (
+            early_repayment_rate * early_duration_months +
+            late_repayment_rate * late_duration_months +
+            ontime_rate * loan_duration_months
+        )
+
+        # Calculate per-loan cash flows based on blended portfolio
+        # Early repayers: reduced interest (shorter duration)
+        early_interest = principal * apr * (early_duration_months / 12) * 0.5 if early_repayment_rate > 0 else 0
+        # Late repayers: full interest plus extra from late period
+        late_interest = principal * apr * (late_duration_months / 12) * 0.5 if late_repayment_rate > 0 else 0
+        # On-time: normal interest
+        ontime_interest = principal * apr * (loan_duration_months / 12) * 0.5
+
+        # Blended interest
+        total_interest = (
+            early_repayment_rate * early_interest +
+            late_repayment_rate * late_interest +
+            ontime_rate * ontime_interest
+        )
+
+        # Fixed fees (collected regardless of early repayment)
         total_fixed_fees = principal * fixed_fee
-        total_late_fees = installments * late_installment_pct * late_fee_amount
+
+        # Late fees (only from late repayers)
+        total_late_fees = late_repayment_rate * installments * late_installment_pct * late_fee_amount
+
         merchant_comm_per_loan = principal * merchant_commission
 
         # Monthly payment per loan (principal + interest)
-        monthly_payment_per_loan = (principal + total_interest) / loan_duration_months
-        monthly_fees_per_loan = (total_fixed_fees + total_late_fees) / loan_duration_months
+        monthly_payment_per_loan = (principal + total_interest) / blended_duration_months
+        monthly_fees_per_loan = (total_fixed_fees + total_late_fees) / blended_duration_months
 
         # Initialize tracking
         results = []
@@ -1809,7 +1853,7 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
                 loan_cohorts.append({
                     'month': 0,
                     'principal': starting_portfolio,
-                    'months_remaining': loan_duration_months
+                    'months_remaining': blended_duration_months
                 })
             else:
                 # Target portfolio at end of month
@@ -1820,7 +1864,7 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
                     loan_cohorts.append({
                         'month': month,
                         'principal': new_loans_principal,
-                        'months_remaining': loan_duration_months
+                        'months_remaining': blended_duration_months
                     })
 
             # Calculate cash flows for this month
@@ -1828,19 +1872,20 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
             interest_collected = 0
             fees_collected = 0
 
-            # Process each active cohort
-            for cohort in loan_cohorts:
-                if cohort['months_remaining'] > 0:
-                    # Calculate proportion of this cohort's payments
-                    cohort_loans = cohort['principal'] / principal
+            # Process each active cohort (skip month 0 - just the starting snapshot)
+            if month > 0:
+                for cohort in loan_cohorts:
+                    if cohort['months_remaining'] > 0:
+                        # Calculate proportion of this cohort's payments
+                        cohort_loans = cohort['principal'] / principal
 
-                    # Monthly repayments from this cohort
-                    principal_repayments += (principal / loan_duration_months) * cohort_loans
-                    interest_collected += (total_interest / loan_duration_months) * cohort_loans
-                    fees_collected += monthly_fees_per_loan * cohort_loans
+                        # Monthly repayments from this cohort
+                        principal_repayments += (principal / blended_duration_months) * cohort_loans
+                        interest_collected += (total_interest / blended_duration_months) * cohort_loans
+                        fees_collected += monthly_fees_per_loan * cohort_loans
 
-                    # Decrement remaining months
-                    cohort['months_remaining'] -= 1
+                        # Decrement remaining months
+                        cohort['months_remaining'] -= 1
 
             # Merchant commission on new loans
             merchant_comm_collected = (new_loans_principal / principal) * merchant_comm_per_loan if month > 0 else 0
@@ -1855,7 +1900,7 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
             net_funding = total_outflows - total_inflows
 
             # Update portfolio balance
-            portfolio_balance = sum(c['principal'] * (c['months_remaining'] / loan_duration_months) for c in loan_cohorts if c['months_remaining'] > 0)
+            portfolio_balance = sum(c['principal'] * (c['months_remaining'] / blended_duration_months) for c in loan_cohorts if c['months_remaining'] > 0)
 
             results.append({
                 'month': month,
@@ -1882,7 +1927,11 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
         'merchant_commission': merchant_commission,
         'fixed_fee': fixed_fee_pct,
         'late_fee_amount': late_fee_amount,
-        'late_installment_pct': late_installment_pct
+        'late_installment_pct': late_installment_pct,
+        'early_repayment_rate': early_repayment_rate,
+        'avg_repayment_installment': avg_repayment_installment,
+        'late_repayment_rate': late_repayment_rate,
+        'avg_days_late_per_installment': avg_days_late_per_installment
     }
 
     # Calculate projection
