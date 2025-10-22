@@ -1716,7 +1716,7 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
     """)
 
     # Input controls
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         starting_portfolio = st.number_input(
@@ -1738,16 +1738,6 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
         )
 
     with col3:
-        monthly_growth = st.slider(
-            "Monthly Growth Rate (%)",
-            min_value=0.0,
-            max_value=50.0,
-            value=10.0,
-            step=1.0,
-            help="Target monthly growth in portfolio principal"
-        ) / 100.0
-
-    with col4:
         monthly_overhead = st.number_input(
             "Monthly Overhead ($)",
             min_value=0.0,
@@ -1757,17 +1747,117 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
             help="Fixed monthly operating costs (salaries, rent, etc.)"
         )
 
+    # Projection mode selection
+    st.markdown("---")
+    projection_mode = st.radio(
+        "Projection Mode",
+        options=["Simple Growth", "Custom Monthly Targets"],
+        horizontal=True,
+        help="Simple: uniform growth rate. Custom: specify exact originations per month"
+    )
+
+    # Growth/Origination inputs based on mode
+    if projection_mode == "Simple Growth":
+        monthly_growth = st.slider(
+            "Monthly Growth Rate (%)",
+            min_value=0.0,
+            max_value=50.0,
+            value=10.0,
+            step=1.0,
+            help="Target monthly growth in portfolio principal (compounds each month)"
+        ) / 100.0
+        custom_originations = None
+    else:
+        # Custom monthly targets mode
+        monthly_growth = None
+
+        # Quick fill buttons
+        st.markdown("**Quick Fill Presets:**")
+        preset_col1, preset_col2, preset_col3, preset_col4 = st.columns(4)
+
+        # Initialize session state for custom originations if not exists
+        if 'custom_originations_df' not in st.session_state:
+            # Default: even distribution
+            avg_origination = starting_portfolio * 0.10  # 10% of starting portfolio per month
+            st.session_state.custom_originations_df = pd.DataFrame({
+                'Month': list(range(1, projection_months + 1)),
+                'New Originations ($)': [avg_origination] * projection_months,
+                'Notes': [''] * projection_months
+            })
+
+        # Update number of rows if projection_months changed
+        if len(st.session_state.custom_originations_df) != projection_months:
+            current_val = st.session_state.custom_originations_df['New Originations ($)'].iloc[0] if len(st.session_state.custom_originations_df) > 0 else starting_portfolio * 0.10
+            st.session_state.custom_originations_df = pd.DataFrame({
+                'Month': list(range(1, projection_months + 1)),
+                'New Originations ($)': [current_val] * projection_months,
+                'Notes': [''] * projection_months
+            })
+
+        with preset_col1:
+            if st.button("Constant", help="Same amount each month"):
+                avg_val = st.session_state.custom_originations_df['New Originations ($)'].mean()
+                st.session_state.custom_originations_df['New Originations ($)'] = [avg_val] * projection_months
+
+        with preset_col2:
+            if st.button("Linear Ramp", help="Gradual linear increase"):
+                start_val = starting_portfolio * 0.05
+                end_val = starting_portfolio * 0.20
+                st.session_state.custom_originations_df['New Originations ($)'] = [
+                    start_val + (end_val - start_val) * (i / max(1, projection_months - 1))
+                    for i in range(projection_months)
+                ]
+
+        with preset_col3:
+            if st.button("Front-Loaded", help="High early, tapering off"):
+                st.session_state.custom_originations_df['New Originations ($)'] = [
+                    starting_portfolio * 0.20 * (1 - 0.5 * i / max(1, projection_months))
+                    for i in range(projection_months)
+                ]
+
+        with preset_col4:
+            if st.button("Back-Loaded", help="Low early, ramping up"):
+                st.session_state.custom_originations_df['New Originations ($)'] = [
+                    starting_portfolio * 0.05 * (1 + 3 * i / max(1, projection_months))
+                    for i in range(projection_months)
+                ]
+
+        # Editable table
+        st.markdown("**Monthly Origination Targets:**")
+        edited_df = st.data_editor(
+            st.session_state.custom_originations_df,
+            hide_index=True,
+            use_container_width=True,
+            num_rows="fixed",
+            column_config={
+                "Month": st.column_config.NumberColumn("Month", disabled=True),
+                "New Originations ($)": st.column_config.NumberColumn(
+                    "New Originations ($)",
+                    min_value=0,
+                    format="$%.0f"
+                ),
+                "Notes": st.column_config.TextColumn("Notes", width="medium")
+            }
+        )
+
+        # Update session state
+        st.session_state.custom_originations_df = edited_df
+
+        # Extract originations list for calculation
+        custom_originations = edited_df['New Originations ($)'].tolist()
+
     # Calculate cash flow projection
-    def calculate_cash_flow_projection(starting_portfolio, months, growth_rate, loan_params, overhead):
+    def calculate_cash_flow_projection(starting_portfolio, months, growth_rate, loan_params, overhead, custom_originations=None):
         """
         Calculate month-by-month cash flow projections.
 
         Args:
             starting_portfolio: Initial portfolio size ($)
             months: Number of months to project
-            growth_rate: Monthly growth rate (as decimal)
+            growth_rate: Monthly growth rate (as decimal) - used if custom_originations is None
             loan_params: Dictionary of current loan parameters
             overhead: Monthly overhead cost ($)
+            custom_originations: List of monthly origination amounts (overrides growth_rate if provided)
 
         Returns:
             DataFrame with monthly cash flow breakdown
@@ -1856,10 +1946,16 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
                     'months_remaining': blended_duration_months
                 })
             else:
-                # Target portfolio at end of month
-                target_portfolio = starting_portfolio * ((1 + growth_rate) ** month)
-                # New loans needed to achieve growth
-                new_loans_principal = target_portfolio - portfolio_balance
+                # Calculate new loans to originate
+                if custom_originations is not None:
+                    # Custom mode: use specified origination amount for this month
+                    new_loans_principal = custom_originations[month - 1]
+                else:
+                    # Simple growth mode: calculate based on compound growth
+                    target_portfolio = starting_portfolio * ((1 + growth_rate) ** month)
+                    # New loans needed to achieve growth
+                    new_loans_principal = target_portfolio - portfolio_balance
+
                 if new_loans_principal > 0:
                     loan_cohorts.append({
                         'month': month,
@@ -1940,7 +2036,8 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
         projection_months,
         monthly_growth,
         loan_params,
-        monthly_overhead
+        monthly_overhead,
+        custom_originations
     )
 
     # Calculate summary metrics
