@@ -25,7 +25,8 @@ def calculate_effective_yield(
     early_repayment_rate: float = 0.0,
     avg_repayment_installment: int = None,
     late_repayment_rate: float = 0.0,
-    avg_days_late_per_installment: int = 0
+    avg_days_late_per_installment: int = 0,
+    late_interest_apr: float = None
 ) -> Dict[str, float]:
     """
     Calculate the effective annualized yield for a BNPL loan with five-way portfolio segmentation.
@@ -60,10 +61,15 @@ def calculate_effective_yield(
         avg_repayment_installment: Average installment number at which early repayment occurs
         late_repayment_rate: % of loans that pay late (as decimal, e.g., 0.20 for 20%)
         avg_days_late_per_installment: Average days late per installment for late payers
+        late_interest_apr: Annual interest rate for late payers (as decimal). If None, uses same rate as apr.
 
     Returns:
         Dictionary with yield breakdown (blended across all portfolio segments)
     """
+    # Default late interest rate to normal rate if not specified
+    if late_interest_apr is None:
+        late_interest_apr = apr
+
     # Validation: Can't have first installment upfront with only 1 installment
     if first_installment_upfront and installments <= 1:
         # Treat as full upfront payment - no loan needed
@@ -174,7 +180,7 @@ def calculate_effective_yield(
             late_loan_duration_days = loan_duration_days + total_late_delay
             late_loan_duration_years = late_loan_duration_days / 365
 
-            late_interest_income = principal * apr * late_loan_duration_years * 0.5
+            late_interest_income = principal * late_interest_apr * late_loan_duration_years * 0.5
             late_fixed_fee = principal * fixed_fee_pct
             late_merchant_comm = principal * merchant_commission_pct
             late_late_fees = late_fee_installments * late_fee_amount  # ALL installments late
@@ -410,6 +416,7 @@ def calculate_required_apr(
     avg_repayment_installment: int = None,
     late_repayment_rate: float = 0.0,
     avg_days_late_per_installment: int = 0,
+    late_interest_apr: float = None,
     max_iterations: int = 100,
     tolerance: float = 0.0001
 ) -> float:
@@ -452,7 +459,8 @@ def calculate_required_apr(
             early_repayment_rate=early_repayment_rate,
             avg_repayment_installment=avg_repayment_installment,
             late_repayment_rate=late_repayment_rate,
-            avg_days_late_per_installment=avg_days_late_per_installment
+            avg_days_late_per_installment=avg_days_late_per_installment,
+            late_interest_apr=late_interest_apr
         )
 
         current_yield = result['effective_yield']
@@ -487,6 +495,7 @@ def estimate_interest_free_cap(
     avg_repayment_installment: int = None,
     late_repayment_rate: float = 0.0,
     avg_days_late_per_installment: int = 0,
+    late_interest_apr: float = None,
     max_installments: int = 12
 ) -> int:
     """
@@ -526,7 +535,8 @@ def estimate_interest_free_cap(
             early_repayment_rate=early_repayment_rate,
             avg_repayment_installment=avg_repayment_installment,
             late_repayment_rate=late_repayment_rate,
-            avg_days_late_per_installment=avg_days_late_per_installment
+            avg_days_late_per_installment=avg_days_late_per_installment,
+            late_interest_apr=late_interest_apr
         )
 
         if result['effective_yield'] < target_yield:
@@ -583,7 +593,8 @@ def compare_interest_models(
     funding_cost_apr: float = 0.0,
     installment_frequency_days: int = 30,
     late_fee_amount: float = 0.0,
-    late_installment_pct: float = 0.0
+    late_installment_pct: float = 0.0,
+    late_interest_apr: float = None
 ) -> Dict:
     """
     Compare interest-bearing vs interest-free loan economics.
@@ -604,7 +615,8 @@ def compare_interest_models(
         funding_cost_apr=funding_cost_apr,
         installment_frequency_days=installment_frequency_days,
         late_fee_amount=late_fee_amount,
-        late_installment_pct=late_installment_pct
+        late_installment_pct=late_installment_pct,
+        late_interest_apr=late_interest_apr
     )
 
     # Interest-free model
@@ -620,7 +632,8 @@ def compare_interest_models(
         funding_cost_apr=funding_cost_apr,
         installment_frequency_days=installment_frequency_days,
         late_fee_amount=late_fee_amount,
-        late_installment_pct=late_installment_pct
+        late_installment_pct=late_installment_pct,
+        late_interest_apr=late_interest_apr
     )
 
     return {

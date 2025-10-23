@@ -141,6 +141,27 @@ with st.sidebar.expander("**Pricing**", expanded=False):
         help="Nominal annual interest rate charged on the principal (set to 0% for interest-free plans)"
     ) / 100.0
 
+    # Late interest rate
+    st.markdown("---")
+    use_same_late_rate = st.checkbox(
+        "Use same rate for late payments",
+        value=True,
+        help="When checked, late payers are charged the same interest rate. When unchecked, you can set a higher penalty rate for late payers."
+    )
+
+    if use_same_late_rate:
+        late_interest_apr = interest_apr
+    else:
+        late_interest_apr = st.slider(
+            "Late Interest Rate (%)",
+            min_value=0.0,
+            max_value=500.0,
+            value=250.0,
+            step=5.0,
+            help="Higher penalty rate charged to late payers (does not affect APR shown to customers)"
+        ) / 100.0
+
+    st.markdown("---")
     # Fixed loan fee
     fixed_fee_pct = st.slider(
         "Fixed Loan Fee (%)",
@@ -275,7 +296,8 @@ current_yield_result = calculate_effective_yield(
     early_repayment_rate=early_repayment_rate,
     avg_repayment_installment=avg_repayment_installment,
     late_repayment_rate=late_repayment_rate,
-    avg_days_late_per_installment=avg_days_late_per_installment
+    avg_days_late_per_installment=avg_days_late_per_installment,
+    late_interest_apr=late_interest_apr
 )
 
 # Calculate required APR
@@ -298,7 +320,8 @@ required_apr = calculate_required_apr(
     early_repayment_rate=early_repayment_rate,
     avg_repayment_installment=avg_repayment_installment,
     late_repayment_rate=late_repayment_rate,
-    avg_days_late_per_installment=avg_days_late_per_installment
+    avg_days_late_per_installment=avg_days_late_per_installment,
+    late_interest_apr=late_interest_apr
 )
 
 # Calculate interest-free installment cap
@@ -321,6 +344,7 @@ interest_free_cap = estimate_interest_free_cap(
     avg_repayment_installment=avg_repayment_installment,
     late_repayment_rate=late_repayment_rate,
     avg_days_late_per_installment=avg_days_late_per_installment,
+    late_interest_apr=late_interest_apr,
     max_installments=12
 )
 
@@ -749,7 +773,8 @@ with st.expander("📊 Sensitivity Analysis", expanded=False):
         'early_repayment_rate': early_repayment_rate,
         'avg_repayment_installment': avg_repayment_installment,
         'late_repayment_rate': late_repayment_rate,
-        'avg_days_late_per_installment': avg_days_late_per_installment
+        'avg_days_late_per_installment': avg_days_late_per_installment,
+        'late_interest_apr': late_interest_apr
     }
 
     # Chart 1: Yield vs Default Rate
@@ -1338,6 +1363,24 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
                 step=5.0,
                 key="comp_apr_input"
             )
+
+            # Late interest rate for comparison scenario
+            comp_use_same_late_rate = st.checkbox(
+                "Use same rate for late payments (B)",
+                value=True,
+                key="comp_use_same_late_rate"
+            )
+            if comp_use_same_late_rate:
+                comp_late_interest_apr = comp_apr
+            else:
+                comp_late_interest_apr = st.slider(
+                    "Late Interest Rate (%) (B)",
+                    min_value=0.0,
+                    max_value=500.0,
+                    step=5.0,
+                    key="comp_late_interest_apr_input"
+                )
+
             comp_fixed_fee = st.slider(
                 "Fixed Fee (%)",
                 min_value=0.0,
@@ -1439,7 +1482,8 @@ with st.expander("🔄 Scenario Comparison", expanded=False):
         early_repayment_rate=comp_early_rate / 100,
         avg_repayment_installment=comp_early_inst,
         late_repayment_rate=comp_late_repay_rate / 100,
-        avg_days_late_per_installment=comp_days_late
+        avg_days_late_per_installment=comp_days_late,
+        late_interest_apr=comp_late_interest_apr / 100
     )
 
     st.markdown("---")
@@ -1875,6 +1919,7 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
         avg_repayment_installment = loan_params['avg_repayment_installment']
         late_repayment_rate = loan_params['late_repayment_rate']
         avg_days_late_per_installment = loan_params['avg_days_late_per_installment']
+        late_interest_apr = loan_params.get('late_interest_apr', apr)  # Default to normal apr if not specified
 
         # Convert installment frequency to months
         payments_per_month = 30 / frequency_days
@@ -1906,8 +1951,8 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
         # Calculate per-loan cash flows based on blended portfolio
         # Early repayers: reduced interest (shorter duration)
         early_interest = principal * apr * (early_duration_months / 12) * 0.5 if early_repayment_rate > 0 else 0
-        # Late repayers: full interest plus extra from late period
-        late_interest = principal * apr * (late_duration_months / 12) * 0.5 if late_repayment_rate > 0 else 0
+        # Late repayers: penalty interest rate with extended duration
+        late_interest = principal * late_interest_apr * (late_duration_months / 12) * 0.5 if late_repayment_rate > 0 else 0
         # On-time: normal interest
         ontime_interest = principal * apr * (loan_duration_months / 12) * 0.5
 
@@ -2027,7 +2072,8 @@ with st.expander("💰 Cash Flow Projection", expanded=False):
         'early_repayment_rate': early_repayment_rate,
         'avg_repayment_installment': avg_repayment_installment,
         'late_repayment_rate': late_repayment_rate,
-        'avg_days_late_per_installment': avg_days_late_per_installment
+        'avg_days_late_per_installment': avg_days_late_per_installment,
+        'late_interest_apr': late_interest_apr
     }
 
     # Calculate projection
